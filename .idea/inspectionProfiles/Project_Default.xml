@@ -1,0 +1,60 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="DuplicatedCode" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <Languages>
+        <language minSize="82" name="Python" />
+      </Languages>
+    </inspection_tool>
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <value>
+          <list size="14">
+            <item index="0" class="java.lang.String" itemvalue="pandas" />
+            <item index="1" class="java.lang.String" itemvalue="tqdm" />
+            <item index="2" class="java.lang.String" itemvalue="tensorflow" />
+            <item index="3" class="java.lang.String" itemvalue="soundfile" />
+            <item index="4" class="java.lang.String" itemvalue="matplotlib" />
+            <item index="5" class="java.lang.String" itemvalue="librosa" />
+            <item index="6" class="java.lang.String" itemvalue="sklearn" />
+            <item index="7" class="java.lang.String" itemvalue="pyaudio" />
+            <item index="8" class="java.lang.String" itemvalue="wave" />
+            <item index="9" class="java.lang.String" itemvalue="comet-ml" />
+            <item index="10" class="java.lang.String" itemvalue="nlpaug" />
+            <item index="11" class="java.lang.String" itemvalue="imblearn" />
+            <item index="12" class="java.lang.String" itemvalue="pytest" />
+            <item index="13" class="java.lang.String" itemvalue="numpy" />
+          </list>
+        </value>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyUnresolvedReferencesInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredIdentifiers">
+        <list>
+          <option value="tuple.value" />
+          <option value="pygame.sprite.Sprite.update_current_move" />
+          <option value="pygame.sprite.Sprite.update_move_information" />
+          <option value="pygame.sprite.Sprite.update_information_based_on_agent_move" />
+          <option value="pygame.sprite.Sprite.increase_player_score" />
+          <option value="pygame.sprite.Sprite.time_to_explosion" />
+          <option value="pygame.sprite.Sprite.decrease_player_score" />
+          <option value="pygame.sprite.Sprite.name" />
+          <option value="pygame.sprite.Sprite.is_during_explosion" />
+          <option value="pygame.sprite.Sprite.freeze_player" />
+          <option value="pygame.sprite.Sprite.time_to_end_explosion" />
+          <option value="pygame.sprite.Sprite.freeze_player_and_decrease_score" />
+          <option value="pygame.sprite.Sprite.decrease_score_and_freeze" />
+          <option value="pygame.sprite.Sprite.update_move" />
+          <option value="pygame.sprite.Sprite.was_touched" />
+          <option value="pygame.sprite.Sprite.auto_explosion" />
+          <option value="pygame.sprite.Sprite.get_current_move" />
+          <option value="pygame.sprite.Sprite.score" />
+          <option value="pygame.sprite.Sprite.get_current_move_as_one_hot" />
+          <option value="pygame.sprite.Sprite.set_as_human_player" />
+          <option value="int.value" />
+          <option value="torch.nn.functional" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
