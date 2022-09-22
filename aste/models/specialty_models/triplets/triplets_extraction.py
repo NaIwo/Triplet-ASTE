@@ -1,14 +1,14 @@
-from ASTE.utils import config
-from ASTE.dataset.reader import Batch
-from ASTE.dataset.domain.const import ASTELabels
-from .crf_model import CRF
-from ASTE.aste.tools.metrics import Metric, get_selected_metrics
-from ASTE.aste.models import ModelOutput, ModelLoss, ModelMetric, BaseModel
+from functools import lru_cache
+from typing import Tuple, List, Dict
 
 import torch
 from torch.nn import CrossEntropyLoss
-from functools import lru_cache
-from typing import Tuple, List, Dict
+
+from ASTE.aste.models import ModelOutput, ModelLoss, ModelMetric, BaseModel
+from ASTE.aste.tools.metrics import Metric, get_selected_metrics
+from ASTE.dataset.domain.const import ASTELabels
+from ASTE.dataset.reader import Batch
+from ASTE.utils import config
 
 
 class TripletExtractorModel(BaseModel):
@@ -30,7 +30,6 @@ class TripletExtractorModel(BaseModel):
         self.linear_layer_3 = torch.nn.Linear(100, 100)
         # 3 is responsible for aspect, opinion, and not_pair
         self.final_layer = torch.nn.Linear(100, config['dataset']['number-of-polarities'] + 3)
-        self.crf = CRF()
         self.dropout = torch.nn.Dropout(0.1)
         self.batch_norm = torch.nn.BatchNorm2d(input_dimension)
         self.final_batch_norm = torch.nn.BatchNorm2d(100)
@@ -50,7 +49,6 @@ class TripletExtractorModel(BaseModel):
         matrix_data = self.final_batch_norm(torch.permute(matrix_data, (0, 3, 1, 2)))
         matrix_data = torch.permute(matrix_data, (0, 2, 3, 1))
         matrix_data = self.final_layer(matrix_data)
-        matrix_data = self.crf(matrix_data)
         return self.softmax(matrix_data)
 
     @staticmethod
@@ -107,8 +105,6 @@ class TripletExtractorModel(BaseModel):
 
     @staticmethod
     def fill_one_dim_matrix(sample: Batch, labels_matrix: torch.Tensor, predicted_spans: torch.Tensor) -> None:
-
-        # TODO make it more readable and add docs
         def check_for_second_element_and_fill_if_necessary(sec_pair: str) -> None:
             assert sec_pair in ('aspect', 'opinion'), f'Invalid second pair source: {sec_pair}!'
             # we can do that in this way because we do not interfere with order of spans

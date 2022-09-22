@@ -18,12 +18,9 @@ model:
       distance-embedding-dim: 3
   span_creator:
     loss-weight: 2.0
-  selector:
+  classifier:
     dice-loss-alpha: 0.5
     loss-weight: 1.0
-    sigmoid-multiplication: 10. # In the training phase of the full model, increase the importance of the sigmoid input
-                                # [sigmoid(value * neuron)] -
-                                # more drastic incorrect span omitting
   triplet-extractor:
     loss-weight: 3.0
 encoder:

@@ -1,3 +1,4 @@
 from ASTE.aste.models.specialty_models.spans.span_creator_model import SpanCreatorModel
+from ASTE.aste.models.specialty_models.spans.all_spans_creator_model import AllSpansCreatorModel
 from ASTE.aste.models.specialty_models.triplets.triplets_extraction import TripletExtractorModel
-from .selection_model import Selector
+from ASTE.aste.models.specialty_models.classification.classification_model import Classifier

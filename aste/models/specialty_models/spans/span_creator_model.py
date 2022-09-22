@@ -1,13 +1,14 @@
-from ASTE.utils import config
-from ASTE.dataset.reader import Batch
-from ASTE.dataset.domain.const import SpanCode
-from ASTE.aste.models.specialty_models.spans.crf import CRF
-from ASTE.aste.tools.metrics import Metric, get_selected_metrics
-from ASTE.aste.models import ModelOutput, ModelLoss, ModelMetric, BaseModel
+from typing import List, Tuple
 
 import torch
-from typing import List, Tuple
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+
+from ASTE.aste.models import ModelOutput, ModelLoss, ModelMetric, BaseModel
+from ASTE.aste.models.specialty_models.spans.crf import CRF
+from ASTE.aste.tools.metrics import Metric, get_selected_metrics
+from ASTE.dataset.domain.const import SpanCode
+from ASTE.dataset.reader import Batch
+from ASTE.utils import config
 
 
 class SpanCreatorModel(BaseModel):
@@ -73,7 +74,8 @@ class SpanCreatorModel(BaseModel):
             else:
                 end_idx = begins[idx + 1] - 1
 
-            results.append([b_idx, end_idx])
+            if end_idx >= b_idx:
+                results.append([b_idx, end_idx])
 
         if not results:
             results.append([0, len(seq) - 1])

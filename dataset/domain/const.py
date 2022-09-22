@@ -16,3 +16,9 @@ class ASTELabels(IntEnum):
     ASPECT: int = 1
     NOT_PAIR: int = 0
     NOT_RELEVANT: int = -1
+
+
+class SpanLabels(IntEnum):
+    ASPECT: int = 2
+    OPINION: int = 1
+    NOT_RELEVANT: int = 0

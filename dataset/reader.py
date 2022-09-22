@@ -1,17 +1,18 @@
-from .domain import Sentence, get_span_label_from_sentence
-from ASTE.utils import config
-from ASTE.dataset.domain.const import SpanCode
-from ASTE.dataset.encoders import BaseEncoder, BertEncoder
-
-import torch
-import numpy as np
-from tqdm import tqdm
-from torch.utils.data import Dataset
-from torch.utils.data import DataLoader
-from torch.nn.utils.rnn import pad_sequence
-from typing import List, Union, Optional, TypeVar
 import os
 from collections import Iterable
+from typing import List, Union, TypeVar
+
+import numpy as np
+import torch
+from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
+from tqdm import tqdm
+
+from ASTE.dataset.domain.const import SpanCode
+from ASTE.dataset.encoders import BaseEncoder, BertEncoder
+from ASTE.utils import config
+from .domain import Sentence, get_span_label_from_sentence
 
 ASTE = TypeVar('ASTE', bound='ASTEDataset')
 

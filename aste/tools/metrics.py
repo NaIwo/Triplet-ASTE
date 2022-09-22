@@ -1,10 +1,10 @@
 from typing import Optional, Dict, List
+
 import torch
 from torch import Tensor
-
-from torchmetrics import MetricCollection
-from torchmetrics import Metric as TorchMetric
 from torchmetrics import FBetaScore, Accuracy, Precision, Recall, F1Score
+from torchmetrics import Metric as TorchMetric
+from torchmetrics import MetricCollection
 
 from ASTE.aste.utils import ignore_index
 
