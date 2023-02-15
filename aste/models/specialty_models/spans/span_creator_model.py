@@ -1,7 +1,7 @@
 from typing import List, Optional, Callable
 
 import torch
-from aste.utils import config
+from aste.configs import config
 from torch import Tensor
 
 from ....dataset.domain import SpanCode
@@ -16,7 +16,7 @@ class SpanCreatorModel(BaseModel):
                  extend_spans: Optional[List[int]] = None):
         super(SpanCreatorModel, self).__init__(model_name)
         self.metrics: Metric = Metric(name='Span Creator', metrics=get_selected_metrics(for_spans=True)).to(
-            config['general']['device'])
+            config['general-training']['device'])
 
         self.extend_spans: Optional[List[int]] = extend_spans
         if extend_spans is None:
@@ -40,7 +40,7 @@ class SpanCreatorModel(BaseModel):
         best_paths: List[List[int]] = self.crf.decode(data, mask=batch.emb_mask[:, :data.shape[1], ...])
 
         for best_path, sample in zip(best_paths, batch):
-            best_path = torch.tensor(best_path).to(config['general']['device'])
+            best_path = torch.tensor(best_path).to(config['general-training']['device'])
             offset: int = sample.sentence_obj[0].encoder.offset
             best_path[:offset] = SpanCode.NOT_SPLIT
             best_path[sum(sample.emb_mask[0]) - offset:] = SpanCode.NOT_SPLIT
@@ -52,7 +52,7 @@ class SpanCreatorModel(BaseModel):
         seq = torch.where(seq == SpanCode.BEGIN_ASPECT, SpanCode.BEGIN_SPLIT, seq)
         seq = torch.where(seq == SpanCode.BEGIN_OPINION, SpanCode.BEGIN_SPLIT, seq)
         begins: Tensor = torch.where(seq == SpanCode.BEGIN_SPLIT)[0]
-        begins = torch.cat((begins, torch.tensor([len(seq)], device=config['general']['device'])))
+        begins = torch.cat((begins, torch.tensor([len(seq)], device=config['general-training']['device'])))
         begins: List = [sample.sentence_obj[0].agree_index(idx) for idx in begins]
         results: List[List[int, int]] = list()
 
@@ -74,7 +74,7 @@ class SpanCreatorModel(BaseModel):
             results.append([0, len(seq) - 1])
         else:
             results = self.extend_results(results, sample)
-        return torch.tensor(results).to(config['general']['device'])
+        return torch.tensor(results).to(config['general-training']['device'])
 
     def extend_results(self, results: List, sample: Batch) -> List:
         extended_results: List = results[:]

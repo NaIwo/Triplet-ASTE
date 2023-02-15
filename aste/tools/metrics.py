@@ -1,12 +1,11 @@
 from typing import Optional, Dict, List
+
 import torch
-from torch import Tensor
-
-from torchmetrics import MetricCollection
-from torchmetrics import Metric as TorchMetric
-from torchmetrics import FBetaScore, Accuracy, Precision, Recall, F1Score
-
 from aste.utils import ignore_index
+from torch import Tensor
+from torchmetrics import FBetaScore, Accuracy, Precision, Recall, F1Score
+from torchmetrics import Metric as TorchMetric
+from torchmetrics import MetricCollection
 
 
 class Metric(MetricCollection):
@@ -86,7 +85,7 @@ class SpanF1(SpanMetric):
         return self.safe_div(2 * (precision * recall), (precision + recall))
 
 
-def get_selected_metrics(num_classes: int = 1, multiclass: Optional[bool] = None, for_spans: bool = False) -> List:
+def get_selected_metrics(num_classes: int = 1, task: str = 'binary', for_spans: bool = False) -> List:
     if for_spans:
         return [
             SpanPrecision(),
@@ -95,9 +94,9 @@ def get_selected_metrics(num_classes: int = 1, multiclass: Optional[bool] = None
         ]
     else:
         return [
-            Precision(num_classes=num_classes, multiclass=multiclass),
-            Recall(num_classes=num_classes, multiclass=multiclass),
-            Accuracy(num_classes=num_classes, multiclass=multiclass),
-            FBetaScore(num_classes=num_classes, multiclass=multiclass, beta=0.5),
-            F1Score(num_classes=num_classes, multiclass=multiclass)
+            Precision(num_classes=num_classes, task=task),
+            Recall(num_classes=num_classes, task=task),
+            Accuracy(num_classes=num_classes, task=task),
+            FBetaScore(num_classes=num_classes, task=task, beta=0.5),
+            F1Score(num_classes=num_classes, task=task)
         ]

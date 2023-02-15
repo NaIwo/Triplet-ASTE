@@ -12,9 +12,12 @@ setup(
     install_requires=[
         "numpy>=1.22.3",
         "pandas>=1.4.2",
-        "torch>=1.11.0",
+        "torch>=1.13.1",
         "torchmetrics>=0.7.3",
         "tqdm>=4.64.0",
-        "transformers>=4.23.1"
+        "transformers>=4.23.1",
+        "pytorch-lightning>=1.9.0",
+        "envyaml",
+        "fire"
         ]
 )

@@ -1,11 +1,9 @@
 import numpy as np
-from tqdm import tqdm
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from aste.utils import config
+from aste.configs import config
+from tqdm import tqdm
 
 '''
 Implementation taken from: 
@@ -49,7 +47,8 @@ class CRF(nn.Module):
 
     def _set_param(self, name, init_value):
         setattr(self, name, nn.Parameter(
-            torch.tensor(init_value, dtype=torch.float, requires_grad=True, device=config['general']['device'])))
+            torch.tensor(init_value, dtype=torch.float, requires_grad=True,
+                         device=config['general-training']['device'])))
 
     def forward(self, x, spatial_spacings=None, verbose=False):
         """

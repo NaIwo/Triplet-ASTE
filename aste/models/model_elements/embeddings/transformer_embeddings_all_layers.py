@@ -1,7 +1,7 @@
 from typing import Union
 
 import torch
-from aste.utils import config
+from aste.configs import config
 from torch import Tensor
 from transformers import BertModel, DebertaModel
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions as EmbOut

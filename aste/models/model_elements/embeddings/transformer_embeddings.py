@@ -1,7 +1,7 @@
 from typing import List, Union
 
 import torch
-from aste.utils import config
+from aste.configs import config
 from torch import Tensor
 from transformers import DebertaModel, AutoModel
 
@@ -39,7 +39,7 @@ class TransformerWithAggregation(BaseEmbedding):
         sample: Batch
         for sample in batch:
             words_mask: List[int] = sample.sentence_obj[0].get_sub_words_mask(force_true_mask=True)
-            spans: Tensor = torch.tensor(words_mask, device=config['general']['device']).bool()
+            spans: Tensor = torch.tensor(words_mask, device=config['general-training']['device']).bool()
             spans = spans.nonzero().squeeze()
             spans = torch.nn.functional.pad(spans, [1, 0], mode='constant', value=0)
             spans = torch.nn.functional.pad(spans, [0, 1], mode='constant',

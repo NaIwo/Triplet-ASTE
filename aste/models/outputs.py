@@ -1,13 +1,14 @@
-import torch
-from torch import Tensor
-import os
 import json
+import os
 from functools import lru_cache
 from typing import List, Dict, TypeVar, Optional, Tuple
 
-from aste.utils import config
-from ..dataset.reader import Batch
+import torch
+from aste.configs import config
+from torch import Tensor
+
 from ..dataset.domain.const import ASTELabels
+from ..dataset.reader import Batch
 
 ML = TypeVar('ML', bound='ModelLoss')
 MM = TypeVar('MM', bound='ModelMetric')
@@ -98,7 +99,7 @@ class ModelOutput:
         return [curr_span[0]] if curr_span[0] == curr_span[1] else [curr_span[0], curr_span[1]]
 
 
-ZERO: Tensor = torch.tensor(0., device=config['general']['device'])
+ZERO: Tensor = torch.tensor(0., device=config['general-training']['device'])
 
 
 class ModelLoss:
@@ -171,9 +172,10 @@ class ModelLoss:
 
     def __truediv__(self, other: float) -> ML:
         return ModelLoss(
-            span_creator_loss=self.span_creator_loss / other,
-            span_selector_loss=self.span_selector_loss / other,
-            triplet_extractor_loss=self.triplet_extractor_loss / other,
+            span_creator_loss=torch.Tensor(self.span_creator_loss / other).to(config['general-training']['device']),
+            span_selector_loss=torch.Tensor(self.span_selector_loss / other).to(config['general-training']['device']),
+            triplet_extractor_loss=torch.Tensor(self.triplet_extractor_loss / other).to(
+                config['general-training']['device']),
             weighted=False
         )
 
@@ -182,9 +184,10 @@ class ModelLoss:
 
     def __mul__(self, other: float) -> ML:
         return ModelLoss(
-            span_creator_loss=self.span_creator_loss * other,
-            span_selector_loss=self.span_selector_loss * other,
-            triplet_extractor_loss=self.triplet_extractor_loss * other,
+            span_creator_loss=torch.Tensor(self.span_creator_loss * other).to(config['general-training']['device']),
+            span_selector_loss=torch.Tensor(self.span_selector_loss * other).to(config['general-training']['device']),
+            triplet_extractor_loss=torch.Tensor(self.triplet_extractor_loss * other).to(
+                config['general-training']['device']),
             weighted=False
         )
 
@@ -243,6 +246,7 @@ class ModelMetric:
         for metrics in self._all_metrics:
             yield metrics
 
-    @property
-    def logs(self) -> Dict:
-        return self._all_metrics
+    def metrics(self, prefix: str) -> Dict:
+        name: str
+        score: Tensor
+        return {f'{prefix}__{name}': score for name, score in self._all_metrics.items()}

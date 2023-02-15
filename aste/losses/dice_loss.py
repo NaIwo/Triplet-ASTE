@@ -21,13 +21,13 @@ If you find this code useful, please cite the following:
 
 """
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import Tensor
-from typing import Optional
-
 from aste.utils import ignore_index
+from torch import Tensor
 
 
 class DiceLoss(nn.Module):
@@ -63,6 +63,7 @@ class DiceLoss(nn.Module):
         >>> output = loss(input, target)
         >>> output.backward()
     """
+
     def __init__(self,
                  smooth: Optional[float] = 1e-4,
                  square_denominator: Optional[bool] = False,
@@ -106,13 +107,15 @@ class DiceLoss(nn.Module):
                         (flat_input.sum() + flat_target.sum() + self.smooth))
         else:
             loss = 1 - ((2 * interection + self.smooth) /
-                        (torch.sum(torch.square(flat_input, ), -1) + torch.sum(torch.square(flat_target), -1) + self.smooth))
+                        (torch.sum(torch.square(flat_input, ), -1) + torch.sum(torch.square(flat_target),
+                                                                               -1) + self.smooth))
 
         return loss
 
     def _multiple_class(self, input, target, logits_size, mask=None):
         flat_input = input
-        flat_target = F.one_hot(target, num_classes=logits_size).float() if self.index_label_position else target.float()
+        flat_target = F.one_hot(target,
+                                num_classes=logits_size).float() if self.index_label_position else target.float()
         flat_input = torch.nn.Softmax(dim=1)(flat_input) if self.with_logits else flat_input
 
         if mask is not None:
@@ -138,7 +141,9 @@ class DiceLoss(nn.Module):
                     neg_scores_idx = neg_scores[:, label_idx]
                     neg_scores_sort, _ = torch.sort(neg_scores_idx, )
                     threshold = neg_scores_sort[-keep_num + 1]
-                    cond = (torch.argmax(flat_input, dim=1) == label_idx & flat_input[:, label_idx] >= threshold) | pos_example.view(-1)
+                    cond = (torch.argmax(flat_input, dim=1) == label_idx & flat_input[:,
+                                                                           label_idx] >= threshold) | pos_example.view(
+                        -1)
                     ohem_mask_idx = torch.where(cond, 1, 0)
 
                     flat_input_idx = flat_input[:, label_idx]
@@ -193,7 +198,7 @@ class DiceLoss(nn.Module):
 
             neg_scores = torch.masked_select(flat_input, neg_example.bool())
             neg_scores_sort, _ = torch.sort(neg_scores, )
-            threshold = neg_scores_sort[-keep_num+1]
+            threshold = neg_scores_sort[-keep_num + 1]
             cond = (flat_input > threshold) | pos_example.view(-1)
             ohem_mask = torch.where(cond, 1, 0)
             flat_input = flat_input * ohem_mask

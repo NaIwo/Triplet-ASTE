@@ -15,7 +15,7 @@ NUM_EXPERIMENTS: int = 7
 
 def log_introductory_info() -> None:
     logging.info(f"Data path: {data_path}")
-    logging.info(f"Batch size: {config['dataset']['batch-size']}")
+    logging.info(f"Batch size: {config['general-training']['batch-size']}")
     logging.info(f"Effective batch size: {config['dataset']['effective-batch-size']}")
     logging.info(f'Experiment number: {experiment_idx}')
 

@@ -1,5 +1,5 @@
 from aste.dataset.reader import DatasetLoader
-from aste.utils import config, set_up_logger
+from aste.configs import config , set_up_logger
 from aste.trainer import Trainer
 from aste.models import BaseModel, TransformerBasedModel
 from aste.tools import WandbTracker, BaseTracker
@@ -11,14 +11,15 @@ from typing import Dict
 import os
 
 
+
+
 def log_introductory_info(data_path: str) -> None:
     logging.info(f"Data path: {data_path}")
-    logging.info(f"Batch size: {config['dataset']['batch-size']}")
+    logging.info(f"Batch size: {config['general-training']['batch-size']}")
     logging.info(f"Effective batch size: {config['dataset']['effective-batch-size']}")
 
 
 if __name__ == '__main__':
-
     # Select a dataset and set appropriate paths
     dataset_name: str = '14lap'
     data_path: str = os.path.join(os.getcwd(), 'dataset', 'data', 'ASTE_data_v2', dataset_name)
@@ -76,6 +77,3 @@ if __name__ == '__main__':
     prediction: ModelOutput = trainer.predict(sentence)
     # You can also save the results to file
     prediction.save('sentence_result.txt')
-
-
-

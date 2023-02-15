@@ -131,3 +131,4 @@ dmypy.json
 /results/
 /experiments/experiment_results/
 /wandb/
+/lightning_logs/

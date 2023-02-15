@@ -7,11 +7,11 @@ from os.path import join, exists
 from collections import defaultdict
 from typing import List, Dict, DefaultDict
 
-from .other_approach_results import OTHER_RESULTS
+from other_approach_results import OTHER_RESULTS
 from aste.utils import to_json
 
-datasets: List = ['14lap', '14res', '15res', '16res']
-AGG_DIR: str = 'endpoint'
+datasets: List = ['14lap', '14res', '15res', '16res', 'ca', 'eu']
+AGG_DIR: str = 'all'
 
 score_results_file_name: str = 'final_results.json'
 coverage_results_file_name: str = 'final_coverage_results.json'

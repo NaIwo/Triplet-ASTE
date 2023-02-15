@@ -1,11 +1,11 @@
 import os
 import warnings
-from collections import Iterable
+from collections.abc import Iterable
 from typing import List, Union, TypeVar
 
 import numpy as np
 import torch
-from aste.utils import config
+from aste.configs import config
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader
@@ -15,6 +15,8 @@ from tqdm import tqdm
 from .domain import Sentence, get_span_label_from_sentence
 from .domain.const import SpanCode
 from .encoders import BaseEncoder, TransformerEncoder
+
+
 
 ASTE = TypeVar('ASTE', bound='ASTEDataset')
 
@@ -82,7 +84,8 @@ class DatasetLoader:
         for data_name in name:
             paths.append(os.path.join(self.data_path, data_name))
         dataset: ASTEDataset = ASTEDataset(paths, self.encoder, self.include_sub_words_info_in_mask)
-        return DataLoader(dataset, batch_size=config['dataset']['batch-size'], shuffle=shuffle, prefetch_factor=2,
+        return DataLoader(dataset, batch_size=config['general-training']['batch-size'], shuffle=shuffle,
+                          prefetch_factor=2,
                           drop_last=drop_last, collate_fn=self._collate_fn)
 
     def _collate_fn(self, batch: List):
@@ -118,13 +121,13 @@ class DatasetLoader:
 
         sentence_obj = self._get_list_of_sentence_objs(sentence_objs, idx)
         return Batch(sentence_obj=sentence_obj,
-                     sentence=sentence_batch[idx].to(config['general']['device']),
-                     aspect_spans=aspect_spans_batch[idx].to(config['general']['device']),
-                     opinion_spans=opinion_spans_batch[idx].to(config['general']['device']),
-                     chunk_label=chunk_batch[idx].to(config['general']['device']),
-                     sub_words_masks=sub_words_masks_batch[idx].to(config['general']['device']),
-                     mask=mask[idx].to(config['general']['device']),
-                     emb_mask=emb_mask[idx].to(config['general']['device']))
+                     sentence=sentence_batch[idx].to(config['general-training']['device']),
+                     aspect_spans=aspect_spans_batch[idx].to(config['general-training']['device']),
+                     opinion_spans=opinion_spans_batch[idx].to(config['general-training']['device']),
+                     chunk_label=chunk_batch[idx].to(config['general-training']['device']),
+                     sub_words_masks=sub_words_masks_batch[idx].to(config['general-training']['device']),
+                     mask=mask[idx].to(config['general-training']['device']),
+                     emb_mask=emb_mask[idx].to(config['general-training']['device']))
 
     @staticmethod
     def _get_list_of_sentence_objs(sentence_objs: List[Sentence], idx: Tensor) -> List[Sentence]:
@@ -159,10 +162,10 @@ class Batch:
     def from_sentence(cls, sentence: Sentence):
         return cls(
             sentence_obj=[sentence],
-            sentence=torch.tensor([sentence.encoded_sentence]).to(config['general']['device']),
-            sub_words_masks=torch.tensor([sentence.get_sub_words_mask()]).to(config['general']['device']),
-            mask=torch.ones(size=(1, sentence.encoded_sentence_length)).to(config['general']['device']),
-            emb_mask=torch.ones(size=(1, sentence.emb_sentence_length)).to(config['general']['device']),
+            sentence=torch.tensor([sentence.encoded_sentence]).to(config['general-training']['device']),
+            sub_words_masks=torch.tensor([sentence.get_sub_words_mask()]).to(config['general-training']['device']),
+            mask=torch.ones(size=(1, sentence.encoded_sentence_length)).to(config['general-training']['device']),
+            emb_mask=torch.ones(size=(1, sentence.emb_sentence_length)).to(config['general-training']['device']),
             aspect_spans=torch.tensor([[]]),
             opinion_spans=torch.tensor([[]]),
             chunk_label=torch.tensor([[]])

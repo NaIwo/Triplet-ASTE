@@ -2,7 +2,7 @@ from functools import lru_cache
 from typing import List
 
 import torch
-from aste.utils import config
+from aste.configs import config
 
 from ....dataset.reader import Batch
 from ....models import ModelOutput, ModelLoss, ModelMetric, BaseModel
@@ -15,7 +15,7 @@ class AllSpansCreatorModel(BaseModel):
         self.window_size: int = 6
 
         self.metrics: Metric = Metric(name='Span Creator', metrics=get_selected_metrics(for_spans=True)).to(
-            config['general']['device'])
+            config['general-training']['device'])
 
     def forward(self, *args, **kwargs) -> None:
         pass
@@ -46,7 +46,7 @@ class AllSpansCreatorModel(BaseModel):
                     result.append([start_idx, start_idx + window - 1])
                 window += 1
             results += result
-        return torch.tensor(results, device=config['general']['device'])
+        return torch.tensor(results, device=config['general-training']['device'])
 
     def get_loss(self, model_out: ModelOutput) -> ModelLoss:
         return ModelLoss()

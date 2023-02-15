@@ -1,7 +1,7 @@
 from typing import List
 
 import torch
-from aste.utils import config
+from aste.configs import config
 from torch import Tensor
 from torch.nn import Module
 from torch.nn.utils.rnn import PackedSequence
@@ -52,7 +52,7 @@ class RnnAggregator(BaseAggregator, Module):
         embeddings = pack_padded_sequence(data, lengths, batch_first=True)
         packed_output: PackedSequence = self.rnn(embeddings, hidden)[0]
         output: Tensor = pad_packed_sequence(packed_output, batch_first=True)[0]
-        lengths = (lengths - 1).to(config['general']['device'])
+        lengths = (lengths - 1).to(config['general-training']['device'])
         lengths = lengths.view(-1, 1).unsqueeze(1).expand(*data.shape)
         output = torch.gather(output, dim=1, index=lengths)[:, 0, ...]
         output = output[perm_index.argsort()]
@@ -63,5 +63,5 @@ class RnnAggregator(BaseAggregator, Module):
         bi_int: int = 1 + int(self.bidirectional)
         size: int = size // bi_int
         first_dim: int = self.rnn.num_layers * bi_int
-        empty_tensor: Tensor = torch.empty(first_dim, batch_size, size).to(config['general']['device'])
+        empty_tensor: Tensor = torch.empty(first_dim, batch_size, size).to(config['general-training']['device'])
         return torch.nn.init.xavier_uniform_(empty_tensor)

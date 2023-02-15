@@ -1,3 +1,3 @@
-from .transformer_embeddings import Transformer, TransformerWithAggregation
 from .base_embeddings import BaseEmbedding
+from .transformer_embeddings import Transformer, TransformerWithAggregation
 from .transformer_embeddings_all_layers import WeightedBert

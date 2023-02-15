@@ -6,7 +6,7 @@ from typing import Dict, DefaultDict
 from aste.utils import to_json
 
 SAVE_DIR: str = 'without_crf_sigmoid10'
-AGG_DIR: str = 'endpoint'
+AGG_DIR: str = 'all'
 
 
 def aggregate(path: str) -> None:
@@ -54,7 +54,10 @@ if __name__ == '__main__':
     data_path: str = os.path.join('..', 'experiment_results', AGG_DIR)
 
     dataset_name: str
-    for dataset_name in ['14lap', '14res', '15res', '16res']:
-        print(dataset_name)
-        path: str = os.path.join(data_path, dataset_name, SAVE_DIR)
-        aggregate(path)
+    for dataset_name in ['14lap', '14res', '15res', '16res', 'ca', 'eu']:
+        path: str = os.path.join(data_path, dataset_name)
+        for variation in os.listdir(path):
+            final_path: str = os.path.join(path, variation)
+            print(dataset_name)
+            print(final_path)
+            aggregate(final_path)

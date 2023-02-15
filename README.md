@@ -114,7 +114,7 @@ prediction.save('sentence_result.txt')
 You can find usage examples in the file [model_examples.py](./model_examples.py)
 
 ### Configuration
-You can adapt model configuration for your specific task by creation your own [config.yml](./aste/config.yml) file as
+You can adapt model configuration for your specific task by creation your own [config.yml](aste/configs/default_config.yml) file as
 in example. Then, you should create an environment variable '**CONFIG_FILE_PATH**' which points to this file. 
 If you don't provide this file, the default one will be taken.
 

@@ -1,6 +1,6 @@
 from typing import Any, Union
 
-from aste.utils import config
+from aste.configs import config
 from transformers import DebertaModel, AutoModel
 
 from ....models import BaseModel

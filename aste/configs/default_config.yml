@@ -1,0 +1,34 @@
+general-training:
+  logging-level: 'INFO'
+  device: cuda # {cpu vs gpu}
+  num-devices: 1
+  batch-size: 1
+  accumulate_grad_batches: 16 # Accumulates grads every k batches
+  strategy: ddp
+  min-epochs: 1
+  max-epochs: 120
+  max-time: 00:12:00:00 # DD:HH:MM:SS
+  early-stopping: 18
+  precision: 32
+  best-epoch-objective: SpanF1 # you can choose: loss and all metrics with correct prefix
+dataset:
+  number-of-polarities: 3
+model:
+  learning-rate: 0.0001
+  transformer:
+    learning-rate: 0.00001
+    source: microsoft/deberta-base
+  span_creator:
+    loss-weight: 2.0
+  selector:
+    dice-loss-alpha: 0.5
+    loss-weight: 1.0
+    sigmoid-multiplication: 2.0 # In the training phase of the full model, increase the importance of the sigmoid input
+    # [sigmoid(value * neuron)] -
+    # more drastic incorrect span omitting
+  triplet-extractor:
+    loss-weight: 3.0
+encoder:
+  transformer:
+    source: microsoft/deberta-base
+    embedding-dimension: 768

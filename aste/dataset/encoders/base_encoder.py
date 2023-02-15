@@ -1,6 +1,6 @@
 from typing import List, Union
 
-from aste.utils import config
+from aste.configs import config
 from transformers import DebertaTokenizer, AutoTokenizer
 
 
