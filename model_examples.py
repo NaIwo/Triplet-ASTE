@@ -1,5 +1,5 @@
 from aste.dataset.reader import DatasetLoader
-from aste.configs import config , set_up_logger
+from aste.configs import base_config , set_up_logger
 from aste.trainer import Trainer
 from aste.models import BaseModel, TransformerBasedModel
 from aste.tools import WandbTracker, BaseTracker

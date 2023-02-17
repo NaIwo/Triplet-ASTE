@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Union, Optional
 
 import pytorch_lightning as pl
 import torch
-from aste.configs import config
+from aste.configs import base_config
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from torch import Tensor
 
@@ -11,9 +11,10 @@ from . import ModelOutput, ModelLoss, ModelMetric
 
 
 class BaseModel(pl.LightningModule):
-    def __init__(self, model_name: str, *args, **kwargs):
+    def __init__(self, model_name: str, config: Dict = base_config, *args, **kwargs):
         super().__init__()
         self.model_name = model_name
+        self.config: Dict = config
         self.performed_epochs: int = 0
         self.warmup: bool = False
         self.trainable: bool = True
@@ -70,5 +71,5 @@ class BaseModel(pl.LightningModule):
 
     def get_params_and_lr(self) -> List[Dict]:
         return [{
-            "param": self.parameters(), 'lr': config['model']['learning-rate']
+            "param": self.parameters(), 'lr': self.config['model']['learning-rate']
         }]

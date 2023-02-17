@@ -1,8 +1,7 @@
 from functools import lru_cache
-from typing import List
+from typing import List, Dict
 
 import torch
-from aste.configs import config
 
 from ....dataset.reader import Batch
 from ....models import ModelOutput, ModelLoss, ModelMetric, BaseModel
@@ -10,12 +9,12 @@ from ....tools.metrics import Metric, get_selected_metrics
 
 
 class AllSpansCreatorModel(BaseModel):
-    def __init__(self, model_name: str = 'All Spans Creator Model', *args, **kwargs):
-        super(AllSpansCreatorModel, self).__init__(model_name)
+    def __init__(self, config: Dict, model_name: str = 'All Spans Creator Model', *args, **kwargs):
+        super(AllSpansCreatorModel, self).__init__(model_name, config=config)
         self.window_size: int = 6
 
         self.metrics: Metric = Metric(name='Span Creator', metrics=get_selected_metrics(for_spans=True)).to(
-            config['general-training']['device'])
+            self.config['general-training']['device'])
 
     def forward(self, *args, **kwargs) -> None:
         pass
@@ -46,10 +45,10 @@ class AllSpansCreatorModel(BaseModel):
                     result.append([start_idx, start_idx + window - 1])
                 window += 1
             results += result
-        return torch.tensor(results, device=config['general-training']['device'])
+        return torch.tensor(results, device=self.config['general-training']['device'])
 
     def get_loss(self, model_out: ModelOutput) -> ModelLoss:
-        return ModelLoss()
+        return ModelLoss(config=self.config)
 
     def update_metrics(self, model_out: ModelOutput) -> None:
         b: Batch = model_out.batch

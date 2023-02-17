@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 
 import torch
 from torch import Tensor
@@ -8,18 +8,21 @@ from .base_agg import BaseAggregator
 
 
 class EndPointAggregator(BaseAggregator, Module):
-    def __init__(self, input_dim: int, model_name: str = 'End Point Aggregator', *args, **kwargs):
+    def __init__(self, input_dim: int, config: Dict, model_name: str = 'End Point Aggregator', *args, **kwargs):
         Module.__init__(self)
 
         distance_embedding_dim: int = 2
         self.distance_embedding = torch.nn.Linear(1, distance_embedding_dim)
 
         self._out_dim: int = 2 * input_dim + distance_embedding_dim
-        BaseAggregator.__init__(self, input_dim=self._out_dim, model_name=model_name)
+        BaseAggregator.__init__(self, input_dim=self._out_dim, model_name=model_name, config=config)
 
     @property
     def output_dim(self):
         return self._out_dim
+
+    def get_parameters(self):
+        return self.parameters()
 
     def _get_agg_sentence_embeddings(self, sentence_embeddings: Tensor, sentence_spans: Tensor) -> Tensor:
         sentence_agg_embeddings: List = list()

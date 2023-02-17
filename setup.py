@@ -17,7 +17,6 @@ setup(
         "tqdm>=4.64.0",
         "transformers>=4.23.1",
         "pytorch-lightning>=1.9.0",
-        "envyaml",
         "fire"
         ]
 )

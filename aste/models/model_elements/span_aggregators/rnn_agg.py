@@ -1,7 +1,6 @@
-from typing import List
+from typing import List, Dict
 
 import torch
-from aste.configs import config
 from torch import Tensor
 from torch.nn import Module
 from torch.nn.utils.rnn import PackedSequence
@@ -11,23 +10,33 @@ from .base_agg import BaseAggregator
 
 
 class RnnAggregator(BaseAggregator, Module):
-    def __init__(self, input_dim: int,
-                 bidirectional: bool = False,
-                 num_layers: int = 2,
-                 model_name: str = 'RNN Aggregator', *args, **kwargs):
+    def __init__(
+            self,
+            input_dim: int,
+            config: Dict,
+            bidirectional: bool = False,
+            num_layers: int = 2,
+            model_name: str = 'RNN Aggregator',
+            *args, **kwargs
+    ):
         Module.__init__(self)
-        BaseAggregator.__init__(self, input_dim=input_dim, model_name=model_name)
+        BaseAggregator.__init__(self, input_dim=input_dim, model_name=model_name, config=config)
         self._out_dim: int = input_dim
 
         self.bidirectional: bool = bidirectional
-        self.rnn = torch.nn.GRU(input_dim, input_dim // (1 + int(bidirectional)),
-                                num_layers=num_layers,
-                                bidirectional=self.bidirectional,
-                                batch_first=True)
+        self.rnn = torch.nn.GRU(
+            input_dim, input_dim // (1 + int(bidirectional)),
+            num_layers=num_layers,
+            bidirectional=self.bidirectional,
+            batch_first=True
+        )
 
     @property
     def output_dim(self):
         return self._out_dim
+
+    def get_parameters(self):
+        return self.parameters()
 
     def _get_agg_sentence_embeddings(self, sentence_embeddings: Tensor, sentence_spans: Tensor) -> Tensor:
         span_embeddings: List[Tensor] = list()
@@ -52,7 +61,7 @@ class RnnAggregator(BaseAggregator, Module):
         embeddings = pack_padded_sequence(data, lengths, batch_first=True)
         packed_output: PackedSequence = self.rnn(embeddings, hidden)[0]
         output: Tensor = pad_packed_sequence(packed_output, batch_first=True)[0]
-        lengths = (lengths - 1).to(config['general-training']['device'])
+        lengths = (lengths - 1).to(self.config['general-training']['device'])
         lengths = lengths.view(-1, 1).unsqueeze(1).expand(*data.shape)
         output = torch.gather(output, dim=1, index=lengths)[:, 0, ...]
         output = output[perm_index.argsort()]
@@ -63,5 +72,5 @@ class RnnAggregator(BaseAggregator, Module):
         bi_int: int = 1 + int(self.bidirectional)
         size: int = size // bi_int
         first_dim: int = self.rnn.num_layers * bi_int
-        empty_tensor: Tensor = torch.empty(first_dim, batch_size, size).to(config['general-training']['device'])
+        empty_tensor: Tensor = torch.empty(first_dim, batch_size, size).to(self.config['general-training']['device'])
         return torch.nn.init.xavier_uniform_(empty_tensor)

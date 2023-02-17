@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 
 import torch
 from torch import Tensor
@@ -8,9 +8,9 @@ from .base_agg import BaseAggregator
 
 
 class AttentionAggregator(BaseAggregator, Module):
-    def __init__(self, input_dim: int, model_name: str = 'Attention Aggregator', *args, **kwargs):
+    def __init__(self, input_dim: int, config: Dict, model_name: str = 'Attention Aggregator', *args, **kwargs):
         Module.__init__(self)
-        BaseAggregator.__init__(self, input_dim=input_dim, model_name=model_name)
+        BaseAggregator.__init__(self, input_dim=input_dim, model_name=model_name, config=config)
         self._out_dim: int = input_dim
         self.query_linear = torch.nn.Linear(input_dim, input_dim)
         self.softmax = torch.nn.Softmax(dim=1)
@@ -18,6 +18,9 @@ class AttentionAggregator(BaseAggregator, Module):
     @property
     def output_dim(self):
         return self._out_dim
+
+    def get_parameters(self):
+        return self.parameters()
 
     def _get_agg_sentence_embeddings(self, sentence_embeddings: Tensor, sentence_spans: Tensor) -> Tensor:
         sentence_agg_embeddings: List = list()

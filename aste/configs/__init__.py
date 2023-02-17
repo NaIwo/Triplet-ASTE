@@ -1,7 +1,8 @@
 import logging
 import os
+from typing import Optional, Dict
 
-from envyaml import EnvYAML
+import yaml
 
 
 class ConfigReader:
@@ -9,16 +10,26 @@ class ConfigReader:
         pass
 
     @staticmethod
-    def read_config(path: str) -> EnvYAML:
-        cfg = EnvYAML(path)
+    def read_config(path: str) -> Dict:
+        with open(path, 'r') as f:
+            cfg: Dict = yaml.safe_load(f)
         return cfg
 
 
-try:
-    config = ConfigReader.read_config(os.environ['CONFIG_FILE_PATH'])
-except (FileNotFoundError, KeyError, TypeError) as e:
-    default = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'default_config.yml')
-    config = ConfigReader.read_config(default)
+def setup_config(path: Optional[str] = None) -> Dict:
+    try:
+        if path is not None:
+            config = ConfigReader.read_config(path)
+        else:
+            config = ConfigReader.read_config(os.environ['CONFIG_FILE_PATH'])
+    except (FileNotFoundError, KeyError, TypeError) as e:
+        default: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'default_config.yml')
+        config = ConfigReader.read_config(default)
+
+    return config
+
+
+base_config: Dict = setup_config()
 
 
 def set_up_logger() -> None:
@@ -38,12 +49,5 @@ def set_up_logger() -> None:
     logger.addHandler(file_handler)
 
     # Set logging level
-    if config["general-training"]["logging-level"] == 'DEBUG':
-        logger.setLevel(logging.DEBUG)
-        logging.getLogger('werkzeug').setLevel(logging.DEBUG)
-    elif config["general-training"]["logging-level"] == 'WARNING':
-        logger.setLevel(logging.WARNING)
-        logging.getLogger('werkzeug').setLevel(logging.WARNING)
-    else:
-        logger.setLevel(logging.INFO)
-        logging.getLogger('werkzeug').setLevel(logging.INFO)
+    logger.setLevel(logging.INFO)
+    logging.getLogger('werkzeug').setLevel(logging.INFO)

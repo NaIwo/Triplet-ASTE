@@ -2,7 +2,6 @@ from functools import lru_cache
 from typing import Tuple, List, Dict
 
 import torch
-from aste.configs import config
 from torch.nn import CrossEntropyLoss
 
 from .crf_model import CRF
@@ -13,26 +12,26 @@ from ....tools.metrics import Metric, get_selected_metrics
 
 
 class TripletExtractorModel(BaseModel):
-    def __init__(self, input_dim: int, model_name: str = 'Triplet Extractor Model'):
-        super(TripletExtractorModel, self).__init__(model_name=model_name)
+    def __init__(self, input_dim: int, config: Dict, model_name: str = 'Triplet Extractor Model'):
+        super(TripletExtractorModel, self).__init__(model_name=model_name, config=config)
 
         self.triplet_loss = CrossEntropyLoss(ignore_index=ASTELabels.NOT_RELEVANT)
 
         metrics: List = get_selected_metrics(num_classes=6, task='multiclass')
         self.independent_metrics: Metric = Metric(name='Independent matrix predictions', metrics=metrics,
                                                   ignore_index=ASTELabels.NOT_RELEVANT).to(
-            config['general-training']['device'])
+            self.config['general-training']['device'])
 
         metrics = get_selected_metrics(for_spans=True)
         self.final_metrics: Metric = Metric(name='Final predictions', metrics=metrics).to(
-            config['general-training']['device'])
+            self.config['general-training']['device'])
 
         input_dimension: int = input_dim * 2
         self.linear_layer_1 = torch.nn.Linear(input_dimension, 300)
         self.linear_layer_2 = torch.nn.Linear(300, 100)
         self.linear_layer_3 = torch.nn.Linear(100, 100)
         # 3 is responsible for aspect, opinion, and not_pair
-        self.final_layer = torch.nn.Linear(100, config['dataset']['number-of-polarities'] + 3)
+        self.final_layer = torch.nn.Linear(100, self.config['dataset']['number-of-polarities'] + 3)
         self.crf = CRF(filter_size=3, smoothness_theta=0.85)
         self.dropout = torch.nn.Dropout(0.1)
         self.batch_norm = torch.nn.BatchNorm2d(input_dimension)
@@ -41,7 +40,7 @@ class TripletExtractorModel(BaseModel):
 
     def forward(self, data: torch.Tensor) -> torch.Tensor:
         matrix_data = self.construct_matrix(data)
-        if config['general-training']['batch-size'] > 1 and data.shape[0] > 1:
+        if self.config['general-training']['batch-size'] > 1 and data.shape[0] > 1:
             matrix_data = self.batch_norm(torch.permute(matrix_data, (0, 3, 1, 2)))
             matrix_data = torch.permute(matrix_data, (0, 2, 3, 1))
 
@@ -51,7 +50,7 @@ class TripletExtractorModel(BaseModel):
             matrix_data = torch.relu(matrix_data)
             matrix_data = self.dropout(matrix_data)
 
-        if config['general-training']['batch-size'] > 1 and data.shape[0] > 1:
+        if self.config['general-training']['batch-size'] > 1 and data.shape[0] > 1:
             matrix_data = self.final_batch_norm(torch.permute(matrix_data, (0, 3, 1, 2)))
             matrix_data = torch.permute(matrix_data, (0, 2, 3, 1))
 
@@ -69,24 +68,22 @@ class TripletExtractorModel(BaseModel):
         data_row: torch.Tensor = data.unsqueeze(2).expand(-1, -1, max_len, -1)
         return torch.cat([data_col, data_row], dim=-1)
 
-    @staticmethod
-    def agree_predictions(matrix_data: torch.Tensor) -> torch.Tensor:
+    def agree_predictions(self, matrix_data: torch.Tensor) -> torch.Tensor:
         m_shape = matrix_data.shape
         mask = torch.eye(m_shape[1]).repeat(m_shape[0], 1, 1, 1).permute(0, 2, 3, 1).bool()
-        mask = mask.to(config['general-training']['device'])
+        mask = mask.to(self.config['general-training']['device'])
 
         elements: List[int] = [ASTELabels.NEG, ASTELabels.POS, ASTELabels.NEU]
-        matrix_data = TripletExtractorModel._agree_predictions_specific_part(matrix_data, mask, elements)
+        matrix_data = self._agree_predictions_specific_part(matrix_data, mask, elements)
 
         elements: List[int] = [ASTELabels.ASPECT, ASTELabels.OPINION]
-        matrix_data = TripletExtractorModel._agree_predictions_specific_part(matrix_data, ~mask, elements)
+        matrix_data = self._agree_predictions_specific_part(matrix_data, ~mask, elements)
 
         return matrix_data
 
-    @staticmethod
-    def _agree_predictions_specific_part(matrix_data: torch.Tensor, mask: torch.Tensor, elements: List[int]):
+    def _agree_predictions_specific_part(self, matrix_data: torch.Tensor, mask: torch.Tensor, elements: List[int]):
         matrix_data_copy: torch.Tensor = torch.clone(matrix_data)
-        zero: torch.Tensor = torch.tensor([0.], device=config['general-training']['device'])
+        zero: torch.Tensor = torch.tensor([0.], device=self.config['general-training']['device'])
         element: int
         for element in elements:
             matrix_data_copy[..., element] = zero
@@ -101,15 +98,17 @@ class TripletExtractorModel(BaseModel):
             model_out.triplet_results.view([-1, model_out.triplet_results.shape[-1]]),
             true_labels.view([-1])
         )
-        return ModelLoss(triplet_extractor_loss=triplet_loss)
+        return ModelLoss(triplet_extractor_loss=triplet_loss, config=self.config)
 
     def update_metrics(self, model_out: ModelOutput) -> None:
         true_labels: torch.Tensor = self.construct_matrix_labels(model_out.batch, tuple(model_out.predicted_spans))
-        true_triplets: torch.Tensor = self.get_triplets_from_matrix(true_labels)
+        true_triplets: torch.Tensor = self.get_triplets_from_matrix(true_labels).to(
+            self.config['general-training']['device'])
         total_correct_count: int = self.get_total_correct_triplets_count(model_out.batch)
         predicted_labels: torch.Tensor = torch.argmax(model_out.triplet_results, dim=-1)
         predicted_labels = torch.where(true_labels == ASTELabels.NOT_RELEVANT, true_labels, predicted_labels)
-        predicted_triplets: torch.Tensor = self.get_triplets_from_matrix(predicted_labels)
+        predicted_triplets: torch.Tensor = self.get_triplets_from_matrix(predicted_labels).to(
+            self.config['general-training']['device'])
 
         self.independent_metrics(predicted_labels.view([-1]), true_labels.view([-1]))
         self.final_metrics(predicted_triplets, true_triplets, full_target_count=total_correct_count)
@@ -119,10 +118,10 @@ class TripletExtractorModel(BaseModel):
         sample: Batch
         return sum([len(sample.sentence_obj[0].triplets) for sample in batch])
 
-    @staticmethod
     @lru_cache(maxsize=None)
-    def construct_matrix_labels(batch: Batch, predicted_spans: Tuple[torch.Tensor]) -> torch.Tensor:
-        labels_matrix: torch.Tensor = TripletExtractorModel.get_unfilled_labels_matrix(predicted_spans)
+    def construct_matrix_labels(self, batch: Batch, predicted_spans: Tuple[torch.Tensor]) -> torch.Tensor:
+        labels_matrix: torch.Tensor = self.get_unfilled_labels_matrix(predicted_spans).to(
+            self.config['general-training']['device'])
 
         sample_idx: int
         sample: Batch
@@ -136,8 +135,7 @@ class TripletExtractorModel(BaseModel):
     def get_unfilled_labels_matrix(predicted_spans: Tuple[torch.Tensor]) -> torch.Tensor:
         max_span_num = max([spans.shape[0] for spans in predicted_spans])
         size: Tuple = (len(predicted_spans), max_span_num, max_span_num)
-        labels_matrix: torch.Tensor = torch.full(size=size, fill_value=ASTELabels.NOT_PAIR).to(
-            config['general-training']['device'])
+        labels_matrix: torch.Tensor = torch.full(size=size, fill_value=ASTELabels.NOT_PAIR)
         return labels_matrix
 
     @staticmethod
@@ -189,7 +187,7 @@ class TripletExtractorModel(BaseModel):
         sample: torch.Tensor
         for sample_idx, sample in enumerate(matrix):
             triplets += TripletExtractorModel.get_triplets_from_sample(sample, sample_idx)
-        return torch.tensor(triplets).to(config['general-training']['device'])
+        return torch.tensor(triplets)
 
     @staticmethod
     def get_triplets_from_sample(sample: torch.Tensor, sample_idx: int = 0) -> List:

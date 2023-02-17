@@ -2,7 +2,6 @@ certifi==2021.10.8
 charset-normalizer==2.0.12
 click==8.1.2
 docker-pycreds==0.4.0
-envyaml==1.10.211231
 filelock==3.6.0
 gitdb==4.0.9
 GitPython==3.1.27

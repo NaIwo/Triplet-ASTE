@@ -1,7 +1,6 @@
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Dict
 
 import torch
-from aste.configs import config
 from torch import Tensor
 
 from ....dataset.domain import SpanCode
@@ -12,11 +11,11 @@ from ....tools.metrics import Metric, get_selected_metrics
 
 
 class SpanCreatorModel(BaseModel):
-    def __init__(self, input_dim: int, model_name: str = 'Span Creator Model',
+    def __init__(self, input_dim: int, config: Dict, model_name: str = 'Span Creator Model',
                  extend_spans: Optional[List[int]] = None):
-        super(SpanCreatorModel, self).__init__(model_name)
+        super(SpanCreatorModel, self).__init__(model_name, config=config)
         self.metrics: Metric = Metric(name='Span Creator', metrics=get_selected_metrics(for_spans=True)).to(
-            config['general-training']['device'])
+            self.config['general-training']['device'])
 
         self.extend_spans: Optional[List[int]] = extend_spans
         if extend_spans is None:
@@ -40,7 +39,7 @@ class SpanCreatorModel(BaseModel):
         best_paths: List[List[int]] = self.crf.decode(data, mask=batch.emb_mask[:, :data.shape[1], ...])
 
         for best_path, sample in zip(best_paths, batch):
-            best_path = torch.tensor(best_path).to(config['general-training']['device'])
+            best_path = torch.tensor(best_path).to(self.config['general-training']['device'])
             offset: int = sample.sentence_obj[0].encoder.offset
             best_path[:offset] = SpanCode.NOT_SPLIT
             best_path[sum(sample.emb_mask[0]) - offset:] = SpanCode.NOT_SPLIT
@@ -52,7 +51,7 @@ class SpanCreatorModel(BaseModel):
         seq = torch.where(seq == SpanCode.BEGIN_ASPECT, SpanCode.BEGIN_SPLIT, seq)
         seq = torch.where(seq == SpanCode.BEGIN_OPINION, SpanCode.BEGIN_SPLIT, seq)
         begins: Tensor = torch.where(seq == SpanCode.BEGIN_SPLIT)[0]
-        begins = torch.cat((begins, torch.tensor([len(seq)], device=config['general-training']['device'])))
+        begins = torch.cat((begins, torch.tensor([len(seq)], device=self.config['general-training']['device'])))
         begins: List = [sample.sentence_obj[0].agree_index(idx) for idx in begins]
         results: List[List[int, int]] = list()
 
@@ -74,7 +73,7 @@ class SpanCreatorModel(BaseModel):
             results.append([0, len(seq) - 1])
         else:
             results = self.extend_results(results, sample)
-        return torch.tensor(results).to(config['general-training']['device'])
+        return torch.tensor(results).to(self.config['general-training']['device'])
 
     def extend_results(self, results: List, sample: Batch) -> List:
         extended_results: List = results[:]
@@ -92,7 +91,8 @@ class SpanCreatorModel(BaseModel):
 
         return extended_results
 
-    def _add_correct_extended(self, results: List, extended: List) -> List:
+    @staticmethod
+    def _add_correct_extended(results: List, extended: List) -> List:
         begin: int
         end: int
         for begin, end in extended:
@@ -104,7 +104,7 @@ class SpanCreatorModel(BaseModel):
     def get_loss(self, model_out: ModelOutput) -> ModelLoss:
         loss = -self.crf(model_out.span_creator_output, model_out.batch.chunk_label, model_out.batch.emb_mask,
                          reduction='token_mean')
-        return ModelLoss(span_creator_loss=loss)
+        return ModelLoss(span_creator_loss=loss, config=self.config)
 
     def update_metrics(self, model_out: ModelOutput) -> None:
         b: Batch = model_out.batch

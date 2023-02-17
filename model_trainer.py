@@ -2,7 +2,7 @@ import os
 from typing import Union, List
 
 import fire
-from aste.configs import config
+from aste.configs import base_config, setup_config
 from aste.dataset.encoders import TransformerEncoder
 from aste.dataset.reader import DatasetLoader
 from aste.models import BaseModel, TransformerBasedModel
@@ -15,17 +15,20 @@ def train_model(data_path: str = os.path.join('.', 'dataset', 'data', 'ASTE_data
                 api_key: str = 'ANONYMOUS',
                 model_checkpoint_path: str = '../models/aste_model'
                 ):
+
+    # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ CONFIG \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+    # config = setup_config(path='.')
+    config = base_config
     # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ DATA LOADER \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
     data_path = os.path.join(data_path, dataset_name)
-    dataset_reader = DatasetLoader(data_path=data_path, encoder=TransformerEncoder(),
-                                   include_sub_words_info_in_mask=False)
+    dataset_reader = DatasetLoader(data_path=data_path, encoder=TransformerEncoder(), config=config)
 
     train_data = dataset_reader.load('train.txt')
-    dev_data = dataset_reader.load('dev.txt')
-    test_data = dataset_reader.load('test.txt')
+    dev_data = dataset_reader.load('dev.txt', shuffle=False)
+    test_data = dataset_reader.load('test.txt', shuffle=False)
 
     # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ MODEL \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
-    model: BaseModel = TransformerBasedModel()
+    model: BaseModel = TransformerBasedModel(config=config)
 
     # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ TRAINER ELEMENTS \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
@@ -48,13 +51,13 @@ def train_model(data_path: str = os.path.join('.', 'dataset', 'data', 'ASTE_data
         # logger=logger,
         # enable_checkpointing=True,
         # callbacks=callbacks,
-        accumulate_grad_batches=config['general-training']['accumulate_grad_batches'],
+        accumulate_grad_batches=16,
         accelerator=config['general-training']['device'],
-        devices=config['general-training']['num-devices'],
-        strategy=config['general-training']['strategy'],
-        min_epochs=config['general-training']['min-epochs'],
-        max_epochs=config['general-training']['max-epochs'],
-        max_time=config['general-training']['max-time'],
+        devices=1,
+        strategy='ddp',
+        min_epochs=1,
+        max_epochs=120,
+        max_time='00:12:00:00', # DD:HH:MM:SS
         precision=config['general-training']['precision'],
         limit_train_batches=limit_train_batches,
         limit_val_batches=limit_val_batches,

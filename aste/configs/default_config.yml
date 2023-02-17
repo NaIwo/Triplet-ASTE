@@ -1,15 +1,8 @@
 general-training:
-  logging-level: 'INFO'
   device: cuda # {cpu vs gpu}
-  num-devices: 1
   batch-size: 1
-  accumulate_grad_batches: 16 # Accumulates grads every k batches
-  strategy: ddp
-  min-epochs: 1
-  max-epochs: 120
-  max-time: 00:12:00:00 # DD:HH:MM:SS
-  early-stopping: 18
   precision: 32
+  include-sub-words-info-in-mask: False
   best-epoch-objective: SpanF1 # you can choose: loss and all metrics with correct prefix
 dataset:
   number-of-polarities: 3
@@ -18,6 +11,7 @@ model:
   transformer:
     learning-rate: 0.00001
     source: microsoft/deberta-base
+  weighted-loss: True
   span_creator:
     loss-weight: 2.0
   selector:

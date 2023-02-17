@@ -4,7 +4,7 @@ from typing import List, Dict, Union, Optional, Any
 
 import torch
 import yaml
-from aste.configs import config
+from aste.configs import base_config
 from aste.dataset.domain import Sentence
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from torch import Tensor
@@ -22,16 +22,16 @@ from ..dataset.reader import Batch
 
 
 class TransformerBasedModel(BaseModel):
-    def __init__(self, model_name='Transformer Based Model', *args, **kwargs):
+    def __init__(self, model_name='Transformer Based Model', config: Dict = base_config, *args, **kwargs):
 
-        super(TransformerBasedModel, self).__init__(model_name)
-        self.emb_layer: BaseEmbedding = TransformerWithAggregation()
-        self.span_creator: BaseModel = SpanCreatorModel(input_dim=self.emb_layer.embedding_dim)
-        self.aggregator: BaseAggregator = EndPointAggregator(input_dim=self.emb_layer.embedding_dim)
-        self.span_selector: BaseModel = Selector(input_dim=self.aggregator.output_dim)
-        self.triplets_extractor: BaseModel = TripletExtractorModel(input_dim=self.aggregator.output_dim)
+        super(TransformerBasedModel, self).__init__(model_name, config=config)
+        self.emb_layer: BaseEmbedding = TransformerWithAggregation(config=config)
+        self.span_creator: BaseModel = SpanCreatorModel(input_dim=self.emb_layer.embedding_dim, config=config)
+        self.aggregator: BaseAggregator = EndPointAggregator(input_dim=self.emb_layer.embedding_dim, config=config)
+        self.span_selector: BaseModel = Selector(input_dim=self.aggregator.output_dim, config=config)
+        self.triplets_extractor: BaseModel = TripletExtractorModel(input_dim=self.aggregator.output_dim, config=config)
 
-        epochs: List = [2, 4, config['general-training']['max-epochs']]
+        epochs: List = [2, 4, 100]
 
         self.training_scheduler: Dict = {
             range(0, epochs[0]): {
@@ -61,19 +61,21 @@ class TransformerBasedModel(BaseModel):
 
         triplet_results: Tensor = self.triplets_extractor(triplet_input)
 
-        return ModelOutput(batch=batch,
-                           span_creator_output=span_creator_output,
-                           predicted_spans=predicted_spans,
-                           span_selector_output=span_selector_output,
-                           triplet_results=triplet_results)
+        return ModelOutput(
+            batch=batch,
+            span_creator_output=span_creator_output,
+            predicted_spans=predicted_spans,
+            span_selector_output=span_selector_output,
+            triplet_results=triplet_results
+            )
 
     def get_loss(self, model_out: ModelOutput) -> ModelLoss:
         return ModelLoss.from_instances(
             span_creator_loss=self.span_creator.get_loss(model_out) * self.span_creator.trainable,
-            triplet_extractor_loss=self.triplets_extractor.get_loss(
-                model_out) * self.triplets_extractor.trainable,
-            span_selector_loss=self.span_selector.get_loss(
-                model_out) * self.span_selector.trainable)
+            triplet_extractor_loss=self.triplets_extractor.get_loss(model_out) * self.triplets_extractor.trainable,
+            span_selector_loss=self.span_selector.get_loss(model_out) * self.span_selector.trainable,
+            config=self.config
+        )
 
     def update_metrics(self, model_out: ModelOutput) -> None:
         self.span_creator.update_metrics(model_out)
@@ -81,9 +83,11 @@ class TransformerBasedModel(BaseModel):
         self.span_selector.update_metrics(model_out)
 
     def get_metrics(self) -> ModelMetric:
-        return ModelMetric.from_instances(span_creator_metric=self.span_creator.get_metrics(),
-                                          triplet_metric=self.triplets_extractor.get_metrics(),
-                                          span_selector_metric=self.span_selector.get_metrics())
+        return ModelMetric.from_instances(
+            span_creator_metric=self.span_creator.get_metrics(),
+            triplet_metric=self.triplets_extractor.get_metrics(),
+            span_selector_metric=self.span_selector.get_metrics()
+        )
 
     def reset_metrics(self) -> None:
         self.span_creator.reset_metrics()
@@ -97,7 +101,7 @@ class TransformerBasedModel(BaseModel):
         model_out: ModelOutput = self.forward(batch)
         loss: ModelLoss = self.get_loss(model_out)
         self.log("train_loss", loss.full_loss, on_epoch=True, prog_bar=True, logger=True, sync_dist=True,
-                 batch_size=config['general-training']['batch-size'])
+                 batch_size=self.config['general-training']['batch-size'])
         return loss.full_loss
 
     def validation_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> Optional[STEP_OUTPUT]:
@@ -106,14 +110,14 @@ class TransformerBasedModel(BaseModel):
         loss: ModelLoss = self.get_loss(model_out)
 
         self.log("val_loss", loss.full_loss, on_epoch=True, prog_bar=True, logger=True, sync_dist=True,
-                 batch_size=config['general-training']['batch-size'])
+                 batch_size=self.config['general-training']['batch-size'])
         self.log("val_loss_span_creator_loss", loss.span_creator_loss, on_epoch=True, prog_bar=False, logger=True,
                  sync_dist=True,
-                 batch_size=config['general-training']['batch-size'])
+                 batch_size=self.config['general-training']['batch-size'])
         self.log("val_loss_span_selector_loss", loss.span_selector_loss, on_epoch=True, prog_bar=False, logger=True,
-                 sync_dist=True, batch_size=config['general-training']['batch-size'])
+                 sync_dist=True, batch_size=self.config['general-training']['batch-size'])
         self.log("val_loss_triplet_extractor_loss", loss.triplet_extractor_loss, on_epoch=True, prog_bar=False,
-                 logger=True, sync_dist=True, batch_size=config['general-training']['batch-size'])
+                 logger=True, sync_dist=True, batch_size=self.config['general-training']['batch-size'])
         return loss.full_loss
 
     def validation_epoch_end(self, *args, **kwargs) -> None:
@@ -127,7 +131,7 @@ class TransformerBasedModel(BaseModel):
         loss: ModelLoss = self.get_loss(model_out)
 
         self.log("test_loss", loss.full_loss, on_epoch=True, prog_bar=True, logger=True, sync_dist=True,
-                 batch_size=config['general-training']['batch-size'])
+                 batch_size=self.config['general-training']['batch-size'])
         return loss.full_loss
 
     def test_epoch_end(self, *args, **kwargs) -> None:
@@ -143,11 +147,11 @@ class TransformerBasedModel(BaseModel):
 
     def get_params_and_lr(self) -> List[Dict]:
         return [
-            {'params': self.span_creator.parameters(), 'lr': config['model']['learning-rate']},
-            {'params': self.aggregator.parameters(), 'lr': config['model']['learning-rate']},
-            {'params': self.span_selector.parameters(), 'lr': config['model']['learning-rate']},
-            {'params': self.triplets_extractor.parameters(), 'lr': config['model']['learning-rate']},
-            {'params': self.emb_layer.parameters(), 'lr': config['model']['transformer']['learning-rate']}
+            {'params': self.span_creator.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.span_selector.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['learning-rate']}
         ]
 
     def update_trainable_parameters(self) -> None:
@@ -161,7 +165,7 @@ class TransformerBasedModel(BaseModel):
                 break
 
         if self.performed_epochs >= list(self.training_scheduler.keys())[-1][0]:
-            self.span_selector.sigmoid_multiplication = config['model']['selector']['sigmoid-multiplication']
+            self.span_selector.sigmoid_multiplication = self.config['model']['selector']['sigmoid-multiplication']
         self.performed_epochs += 1
 
     @torch.no_grad()
@@ -223,7 +227,7 @@ class TransformerBasedModel(BaseModel):
     @predict.register
     @torch.no_grad()
     def predict_sentence(self, sample: Sentence) -> ModelOutput:
-        sample = Batch.from_sentence(sample)
+        sample = Batch.from_sentence(sample).to_device(self.config)
         self.eval()
         out: ModelOutput = self.forward(sample)
         return out

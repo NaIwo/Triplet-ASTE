@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 
 import torch
 from torch import Tensor
@@ -7,9 +7,9 @@ from .base_agg import BaseAggregator
 
 
 class LastElementAggregator(BaseAggregator):
-    def __init__(self, input_dim: int, model_name: str = 'Last Element Aggregator', *args, **kwargs):
+    def __init__(self, input_dim: int, config: Dict, model_name: str = 'Last Element Aggregator', *args, **kwargs):
         self._out_dim: int = input_dim
-        BaseAggregator.__init__(self, input_dim=self._out_dim, model_name=model_name)
+        BaseAggregator.__init__(self, input_dim=self._out_dim, model_name=model_name, config=config)
 
     @property
     def output_dim(self):

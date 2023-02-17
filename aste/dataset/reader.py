@@ -1,11 +1,10 @@
 import os
-import warnings
 from collections.abc import Iterable
-from typing import List, Union, TypeVar
+from typing import List, Union, TypeVar, Dict
 
 import numpy as np
 import torch
-from aste.configs import config
+from aste.configs import base_config
 from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader
@@ -15,8 +14,6 @@ from tqdm import tqdm
 from .domain import Sentence, get_span_label_from_sentence
 from .domain.const import SpanCode
 from .encoders import BaseEncoder, TransformerEncoder
-
-
 
 ASTE = TypeVar('ASTE', bound='ASTEDataset')
 
@@ -64,16 +61,11 @@ class ASTEDataset(Dataset):
 class DatasetLoader:
     def __init__(self, data_path: str,
                  encoder: BaseEncoder = TransformerEncoder(),
-                 include_sub_words_info_in_mask: bool = True):
+                 config: Dict = base_config):
 
         self.data_path: str = data_path
         self.encoder: BaseEncoder = encoder
-        self.include_sub_words_info_in_mask: bool = include_sub_words_info_in_mask
-
-        if not include_sub_words_info_in_mask:
-            warnings.warn('Careful! If you do not want to include sub-word elements in '
-                          'the mask make sure that the embedding model also take this into account '
-                          '(aggregate embeddings from sub-words or do not generate such situations)! ')
+        self.config = config
 
     def load(self, name: Union[str, List[str]], drop_last: bool = False, shuffle: bool = True) -> DataLoader:
         if isinstance(name, str):
@@ -83,10 +75,18 @@ class DatasetLoader:
         data_name: str
         for data_name in name:
             paths.append(os.path.join(self.data_path, data_name))
-        dataset: ASTEDataset = ASTEDataset(paths, self.encoder, self.include_sub_words_info_in_mask)
-        return DataLoader(dataset, batch_size=config['general-training']['batch-size'], shuffle=shuffle,
-                          prefetch_factor=2,
-                          drop_last=drop_last, collate_fn=self._collate_fn)
+        dataset: ASTEDataset = ASTEDataset(
+            paths,
+            self.encoder,
+            self.config['general-training']['include-sub-words-info-in-mask']
+        )
+        return DataLoader(
+            dataset,
+            batch_size=self.config['general-training']['batch-size'],
+            shuffle=shuffle,
+            prefetch_factor=2,
+            drop_last=drop_last, collate_fn=self._collate_fn
+        )
 
     def _collate_fn(self, batch: List):
         sentence_objs: List[Sentence] = list()
@@ -120,14 +120,16 @@ class DatasetLoader:
         idx: Tensor = torch.argsort(lengths, descending=True)
 
         sentence_obj = self._get_list_of_sentence_objs(sentence_objs, idx)
-        return Batch(sentence_obj=sentence_obj,
-                     sentence=sentence_batch[idx].to(config['general-training']['device']),
-                     aspect_spans=aspect_spans_batch[idx].to(config['general-training']['device']),
-                     opinion_spans=opinion_spans_batch[idx].to(config['general-training']['device']),
-                     chunk_label=chunk_batch[idx].to(config['general-training']['device']),
-                     sub_words_masks=sub_words_masks_batch[idx].to(config['general-training']['device']),
-                     mask=mask[idx].to(config['general-training']['device']),
-                     emb_mask=emb_mask[idx].to(config['general-training']['device']))
+        return Batch(
+            sentence_obj=sentence_obj,
+            sentence=sentence_batch[idx],
+            aspect_spans=aspect_spans_batch[idx],
+            opinion_spans=opinion_spans_batch[idx],
+            chunk_label=chunk_batch[idx],
+            sub_words_masks=sub_words_masks_batch[idx],
+            mask=mask[idx],
+            emb_mask=emb_mask[idx]
+            ).to_device(self.config)
 
     @staticmethod
     def _get_list_of_sentence_objs(sentence_objs: List[Sentence], idx: Tensor) -> List[Sentence]:
@@ -146,9 +148,15 @@ class DatasetLoader:
 
 
 class Batch:
-    def __init__(self, *, sentence_obj: [Sentence], sentence: Tensor,
-                 aspect_spans: Tensor, opinion_spans: Tensor,
-                 chunk_label: Tensor, sub_words_masks: Tensor, mask: Tensor, emb_mask: Tensor):
+    def __init__(self, *,
+                 sentence_obj: [Sentence],
+                 sentence: Tensor,
+                 aspect_spans: Tensor,
+                 opinion_spans: Tensor,
+                 chunk_label: Tensor,
+                 sub_words_masks: Tensor,
+                 mask: Tensor,
+                 emb_mask: Tensor):
         self.sentence_obj: List[Sentence] = sentence_obj
         self.sentence: Tensor = sentence
         self.aspect_spans: Tensor = aspect_spans
@@ -162,14 +170,25 @@ class Batch:
     def from_sentence(cls, sentence: Sentence):
         return cls(
             sentence_obj=[sentence],
-            sentence=torch.tensor([sentence.encoded_sentence]).to(config['general-training']['device']),
-            sub_words_masks=torch.tensor([sentence.get_sub_words_mask()]).to(config['general-training']['device']),
-            mask=torch.ones(size=(1, sentence.encoded_sentence_length)).to(config['general-training']['device']),
-            emb_mask=torch.ones(size=(1, sentence.emb_sentence_length)).to(config['general-training']['device']),
+            sentence=torch.tensor([sentence.encoded_sentence]),
+            sub_words_masks=torch.tensor([sentence.get_sub_words_mask()]),
+            mask=torch.ones(size=(1, sentence.encoded_sentence_length)),
+            emb_mask=torch.ones(size=(1, sentence.emb_sentence_length)),
             aspect_spans=torch.tensor([[]]),
             opinion_spans=torch.tensor([[]]),
             chunk_label=torch.tensor([[]])
         )
+
+    def to_device(self, config: Dict):
+        self.sentence = self.sentence.to(config['general-training']['device'])
+        self.sub_words_mask = self.sub_words_mask.to(config['general-training']['device'])
+        self.mask = self.mask.to(config['general-training']['device'])
+        self.emb_mask = self.emb_mask.to(config['general-training']['device'])
+        self.aspect_spans = self.aspect_spans.to(config['general-training']['device'])
+        self.opinion_spans = self.opinion_spans.to(config['general-training']['device'])
+        self.chunk_label = self.chunk_label.to(config['general-training']['device'])
+
+        return self
 
     def __iter__(self):
         self.num: int = -1
@@ -179,14 +198,16 @@ class Batch:
         self.num += 1
         if self.num >= len(self.sentence_obj):
             raise StopIteration
-        return Batch(sentence_obj=[self.sentence_obj[self.num]],
-                     sentence=self.sentence[self.num].unsqueeze(0),
-                     aspect_spans=self.aspect_spans[self.num].unsqueeze(0),
-                     opinion_spans=self.opinion_spans[self.num].unsqueeze(0),
-                     chunk_label=self.chunk_label[self.num].unsqueeze(0),
-                     sub_words_masks=self.sub_words_mask[self.num].unsqueeze(0),
-                     mask=self.mask[self.num].unsqueeze(0),
-                     emb_mask=self.emb_mask[self.num].unsqueeze(0))
+        return Batch(
+            sentence_obj=[self.sentence_obj[self.num]],
+            sentence=self.sentence[self.num].unsqueeze(0),
+            aspect_spans=self.aspect_spans[self.num].unsqueeze(0),
+            opinion_spans=self.opinion_spans[self.num].unsqueeze(0),
+            chunk_label=self.chunk_label[self.num].unsqueeze(0),
+            sub_words_masks=self.sub_words_mask[self.num].unsqueeze(0),
+            mask=self.mask[self.num].unsqueeze(0),
+            emb_mask=self.emb_mask[self.num].unsqueeze(0)
+        )
 
     def __len__(self) -> int:
         return len(self.sentence_obj)

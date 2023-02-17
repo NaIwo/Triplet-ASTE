@@ -4,7 +4,6 @@ from functools import lru_cache
 from typing import List, Dict, TypeVar, Optional, Tuple
 
 import torch
-from aste.configs import config
 from torch import Tensor
 
 from ..dataset.domain.const import ASTELabels
@@ -99,35 +98,52 @@ class ModelOutput:
         return [curr_span[0]] if curr_span[0] == curr_span[1] else [curr_span[0], curr_span[1]]
 
 
-ZERO: Tensor = torch.tensor(0., device=config['general-training']['device'])
-
-
 class ModelLoss:
     NAME: str = 'Losses'
 
-    def __init__(self, *, span_creator_loss: Tensor = ZERO, span_selector_loss: Tensor = ZERO,
-                 triplet_extractor_loss: Tensor = ZERO, weighted: bool = True):
-        self.span_creator_loss: Tensor = span_creator_loss
-        self.span_selector_loss: Tensor = span_selector_loss
-        self.triplet_extractor_loss: Tensor = triplet_extractor_loss
+    def __init__(
+            self, *,
+            config: Optional[Dict],
+            span_creator_loss: Optional[Tensor] = None,
+            span_selector_loss: Optional[Tensor] = None,
+            triplet_extractor_loss: Optional[Tensor] = None
+    ):
 
-        if weighted:
+        ZERO: Tensor = torch.tensor(0., device=config['general-training']['device'])
+        self.span_creator_loss: Tensor = span_creator_loss if span_creator_loss is not None else ZERO
+        self.span_selector_loss: Tensor = span_selector_loss if span_selector_loss is not None else ZERO
+        self.triplet_extractor_loss: Tensor = triplet_extractor_loss if triplet_extractor_loss is not None else ZERO
+        self.config: Dict = config
+
+        if self.config['model']['weighted-loss']:
             self._include_weights()
 
     @classmethod
-    def from_instances(cls, *, span_creator_loss: ML, triplet_extractor_loss: ML, span_selector_loss: ML,
-                       weighted: bool = False) -> ML:
+    def from_instances(
+            cls, *,
+            span_creator_loss: ML,
+            triplet_extractor_loss: ML,
+            span_selector_loss: ML,
+            config: Dict
+    ) -> ML:
         return cls(
             span_creator_loss=span_creator_loss.span_creator_loss,
             span_selector_loss=span_selector_loss.span_selector_loss,
             triplet_extractor_loss=triplet_extractor_loss.triplet_extractor_loss,
-            weighted=weighted
+            config=config
         )
 
+    def to_device(self) -> ML:
+        self.span_creator_loss = self.span_creator_loss.to(self.config['general-training']['device'])
+        self.span_selector_loss = self.span_selector_loss.to(self.config['general-training']['device'])
+        self.triplet_extractor_loss = self.triplet_extractor_loss.to(self.config['general-training']['device'])
+
+        return self
+
     def _include_weights(self) -> None:
-        self.span_creator_loss *= config['model']['span_creator']['loss-weight']
-        self.span_selector_loss *= config['model']['selector']['loss-weight']
-        self.triplet_extractor_loss *= config['model']['triplet-extractor']['loss-weight']
+        self.span_creator_loss *= self.config['model']['span_creator']['loss-weight']
+        self.span_selector_loss *= self.config['model']['selector']['loss-weight']
+        self.triplet_extractor_loss *= self.config['model']['triplet-extractor']['loss-weight']
 
     def backward(self) -> None:
         self.full_loss.backward()
@@ -167,29 +183,27 @@ class ModelLoss:
             span_creator_loss=self.span_creator_loss + other.span_creator_loss,
             span_selector_loss=self.span_selector_loss + other.span_selector_loss,
             triplet_extractor_loss=self.triplet_extractor_loss + other.triplet_extractor_loss,
-            weighted=False
+            config=self.config
         )
 
     def __truediv__(self, other: float) -> ML:
         return ModelLoss(
-            span_creator_loss=torch.Tensor(self.span_creator_loss / other).to(config['general-training']['device']),
-            span_selector_loss=torch.Tensor(self.span_selector_loss / other).to(config['general-training']['device']),
-            triplet_extractor_loss=torch.Tensor(self.triplet_extractor_loss / other).to(
-                config['general-training']['device']),
-            weighted=False
-        )
+            span_creator_loss=torch.Tensor(self.span_creator_loss / other),
+            span_selector_loss=torch.Tensor(self.span_selector_loss / other),
+            triplet_extractor_loss=torch.Tensor(self.triplet_extractor_loss / other),
+            config=self.config
+        ).to_device()
 
     def __rmul__(self, other: float) -> ML:
         return self.__mul__(other)
 
     def __mul__(self, other: float) -> ML:
         return ModelLoss(
-            span_creator_loss=torch.Tensor(self.span_creator_loss * other).to(config['general-training']['device']),
-            span_selector_loss=torch.Tensor(self.span_selector_loss * other).to(config['general-training']['device']),
-            triplet_extractor_loss=torch.Tensor(self.triplet_extractor_loss * other).to(
-                config['general-training']['device']),
-            weighted=False
-        )
+            span_creator_loss=torch.Tensor(self.span_creator_loss * other),
+            span_selector_loss=torch.Tensor(self.span_selector_loss * other),
+            triplet_extractor_loss=torch.Tensor(self.triplet_extractor_loss * other),
+            config=self.config
+        ).to_device()
 
     def __iter__(self):
         for element in self._loss_dict.items():

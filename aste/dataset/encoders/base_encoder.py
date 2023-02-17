@@ -1,6 +1,6 @@
-from typing import List, Union
+from typing import List, Union, Dict
 
-from aste.configs import config
+from aste.configs import base_config
 from transformers import DebertaTokenizer, AutoTokenizer
 
 
@@ -9,6 +9,10 @@ class BaseEncoder:
         self.encoder_name: str = encoder_name
         self.offset: int = 0
         self.encoder = None
+        self.config: Dict = base_config
+
+    def set_config(self, config: Dict) -> None:
+        self.config = config
 
     def encode(self, sentence: str) -> List:
         return [len(word) for word in sentence.strip().split()]
@@ -25,11 +29,11 @@ class BaseEncoder:
         self.encoder.add_prefix_space = False
         return encoded_words
 
-    @staticmethod
-    def get_transformer_encoder_from_config() -> Union[DebertaTokenizer, AutoTokenizer]:
-        if 'deberta' in config['encoder']['transformer']['source']:
-            return DebertaTokenizer.from_pretrained(config['encoder']['transformer']['source'])
-        elif 'bert' in config['encoder']['transformer']['source']:
-            return AutoTokenizer.from_pretrained(config['encoder']['transformer']['source'])
+    def get_transformer_encoder_from_config(self) -> Union[DebertaTokenizer, AutoTokenizer]:
+        if 'deberta' in self.config['encoder']['transformer']['source']:
+            return DebertaTokenizer.from_pretrained(self.config['encoder']['transformer']['source'])
+        elif 'bert' in self.config['encoder']['transformer']['source']:
+            return AutoTokenizer.from_pretrained(self.config['encoder']['transformer']['source'])
         else:
-            raise Exception(f"We do not support this transformer model {config['encoder']['transformer']['source']}!")
+            raise Exception(
+                f"We do not support this transformer model {self.config['encoder']['transformer']['source']}!")
