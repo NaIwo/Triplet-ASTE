@@ -12,7 +12,7 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 from .domain import Sentence, get_span_label_from_sentence
-from .domain.const import SpanCode
+from .domain.const import SpanCode, ASTELabels
 from .encoders import BaseEncoder, TransformerEncoder
 
 ASTE = TypeVar('ASTE', bound='ASTEDataset')
@@ -93,16 +93,19 @@ class DatasetLoader:
         encoded_sentences: List = list()
         aspect_spans: List = list()
         opinion_spans: List = list()
+        sentiments: List = list()
         chunk_labels: List = list()
         sub_words_masks: List = list()
         lengths: List = list()
         emb_lengths: List = list()
+
         sample: Sentence
         for sample in batch:
             sentence_objs.append(sample)
             encoded_sentences.append(torch.tensor(sample.encoded_sentence))
             aspect_spans.append(torch.tensor(sample.get_aspect_spans()))
             opinion_spans.append(torch.tensor(sample.get_opinion_spans()))
+            sentiments.append(torch.tensor(sample.get_sentiments()))
             chunk_labels.append(torch.tensor(get_span_label_from_sentence(sample)))
             sub_words_masks.append(torch.tensor(sample.get_sub_words_mask()))
             lengths.append(sample.encoded_sentence_length)
@@ -113,7 +116,8 @@ class DatasetLoader:
         sentence_batch = pad_sequence(encoded_sentences, padding_value=0, batch_first=True)
         aspect_spans_batch = pad_sequence(aspect_spans, padding_value=-1, batch_first=True)
         opinion_spans_batch = pad_sequence(opinion_spans, padding_value=-1, batch_first=True)
-        chunk_batch = pad_sequence(chunk_labels, padding_value=SpanCode.NOT_RELEVANT, batch_first=True)
+        sentiments_batch = pad_sequence(sentiments, padding_value=float(ASTELabels.NOT_RELEVANT), batch_first=True)
+        chunk_batch = pad_sequence(chunk_labels, padding_value=float(SpanCode.NOT_RELEVANT), batch_first=True)
         sub_words_masks_batch = pad_sequence(sub_words_masks, padding_value=0, batch_first=True)
         mask: Tensor = self._construct_mask(lengths)
         emb_mask: Tensor = self._construct_mask(emb_lengths)
@@ -125,6 +129,7 @@ class DatasetLoader:
             sentence=sentence_batch[idx],
             aspect_spans=aspect_spans_batch[idx],
             opinion_spans=opinion_spans_batch[idx],
+            sentiments=sentiments_batch[idx],
             chunk_label=chunk_batch[idx],
             sub_words_masks=sub_words_masks_batch[idx],
             mask=mask[idx],
@@ -153,6 +158,7 @@ class Batch:
                  sentence: Tensor,
                  aspect_spans: Tensor,
                  opinion_spans: Tensor,
+                 sentiments: Tensor,
                  chunk_label: Tensor,
                  sub_words_masks: Tensor,
                  mask: Tensor,
@@ -161,6 +167,7 @@ class Batch:
         self.sentence: Tensor = sentence
         self.aspect_spans: Tensor = aspect_spans
         self.opinion_spans: Tensor = opinion_spans
+        self.sentiments: Tensor = sentiments
         self.chunk_label: Tensor = chunk_label
         self.sub_words_mask: Tensor = sub_words_masks
         self.mask: Tensor = mask
@@ -176,6 +183,7 @@ class Batch:
             emb_mask=torch.ones(size=(1, sentence.emb_sentence_length)),
             aspect_spans=torch.tensor([[]]),
             opinion_spans=torch.tensor([[]]),
+            sentiments=torch.tensor([[]]),
             chunk_label=torch.tensor([[]])
         )
 
@@ -186,6 +194,7 @@ class Batch:
         self.emb_mask = self.emb_mask.to(config['general-training']['device'])
         self.aspect_spans = self.aspect_spans.to(config['general-training']['device'])
         self.opinion_spans = self.opinion_spans.to(config['general-training']['device'])
+        self.sentiments = self.sentiments.to(config['general-training']['device'])
         self.chunk_label = self.chunk_label.to(config['general-training']['device'])
 
         return self
@@ -203,6 +212,7 @@ class Batch:
             sentence=self.sentence[self.num].unsqueeze(0),
             aspect_spans=self.aspect_spans[self.num].unsqueeze(0),
             opinion_spans=self.opinion_spans[self.num].unsqueeze(0),
+            sentiments=self.sentiments[self.num].unsqueeze(0),
             chunk_label=self.chunk_label[self.num].unsqueeze(0),
             sub_words_masks=self.sub_words_mask[self.num].unsqueeze(0),
             mask=self.mask[self.num].unsqueeze(0),

@@ -62,7 +62,7 @@ if __name__ == '__main__':
     trainer.load_model(save_path)
 
     # You can check coverage of correct detected spans
-    trainer.check_coverage_detected_spans(test_data)
+    trainer.check_spans_coverage(test_data)
     # Or you can test your model on selected dataset
     results: Dict = trainer.test(test_data)
 

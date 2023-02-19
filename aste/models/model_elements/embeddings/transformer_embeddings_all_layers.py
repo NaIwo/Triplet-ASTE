@@ -7,6 +7,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAtte
 
 from .base_embeddings import BaseEmbedding
 from ....dataset.reader import Batch
+from ....models.outputs import BaseModelOutput
 
 
 class WeightedBert(BaseEmbedding):
@@ -23,14 +24,14 @@ class WeightedBert(BaseEmbedding):
         self.batch_norm = torch.nn.BatchNorm1d(dim)
         self.softmax = torch.nn.Softmax(dim=-1)
 
-    def forward(self, batch: Batch, *args, **kwargs) -> Tensor:
+    def forward(self, batch: Batch, *args, **kwargs) -> BaseModelOutput:
         emb_out: EmbOut = self.model.forward(batch.sentence, batch.mask, output_hidden_states=True)
         embeddings: Tensor = torch.stack(emb_out.hidden_states, dim=1)
 
         attention: Tensor = self._get_attention_weights(embeddings)
         embeddings = attention[..., None, None] * embeddings
 
-        return torch.sum(embeddings, dim=1)
+        return BaseModelOutput(batch=batch, features=torch.sum(embeddings, dim=1))
 
     def _get_attention_weights(self, embeddings: Tensor) -> Tensor:
         attention: Tensor = embeddings[:, :, 0, :]

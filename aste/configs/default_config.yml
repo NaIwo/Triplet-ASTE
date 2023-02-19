@@ -6,6 +6,10 @@ general-training:
   best-epoch-objective: SpanF1 # you can choose: loss and all metrics with correct prefix
 dataset:
   number-of-polarities: 3
+  polarities: # Ay this moment only subset of {POS, NEG, NEU}
+    - POS
+    - NEG
+    - NEU
 model:
   learning-rate: 0.0001
   transformer:

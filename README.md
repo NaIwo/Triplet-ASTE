@@ -75,12 +75,13 @@ trainer.train(train_data=train_data, dev_data=dev_data)
 ```
 
 #### Model testing
+
 ```python
 # LOAD BEST MODEL
 trainer.load_model(save_path)
 
 # You can check coverage of correct detected spans
-trainer.check_coverage_detected_spans(test_data)
+trainer.check_spans_coverage(test_data)
 
 # Or you can test your model on selected dataset
 results: Dict = trainer.test(test_data)

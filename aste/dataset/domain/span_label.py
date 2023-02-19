@@ -1,7 +1,8 @@
 import numpy as np
 
 from .const import SpanCode
-from .sentence import Sentence, Triplet
+from .sentence import Sentence
+from . import Triplet
 
 
 def get_span_label_from_sentence(sentence: Sentence) -> np.ndarray:

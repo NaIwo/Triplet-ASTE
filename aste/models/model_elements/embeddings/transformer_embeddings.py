@@ -7,6 +7,7 @@ from transformers import DebertaModel, AutoModel
 from .base_embeddings import BaseEmbedding
 from ..span_aggregators import BaseAggregator, LastElementAggregator
 from ....dataset.reader import Batch
+from ....models.outputs import BaseModelOutput
 
 
 class Transformer(BaseEmbedding):
@@ -15,8 +16,8 @@ class Transformer(BaseEmbedding):
         super(Transformer, self).__init__(embedding_dim=dim, model_name=model_name, config=config)
         self.model: Union[DebertaModel, AutoModel] = self.get_transformer_encoder_from_config()
 
-    def forward(self, batch: Batch, *args, **kwargs) -> Tensor:
-        return self.model.forward(batch.sentence, batch.mask).last_hidden_state
+    def forward(self, batch: Batch, *args, **kwargs) -> BaseModelOutput:
+        return BaseModelOutput(batch=batch, features=self.model.forward(batch.sentence, batch.mask).last_hidden_state)
 
 
 class TransformerWithAggregation(BaseEmbedding):
@@ -27,10 +28,10 @@ class TransformerWithAggregation(BaseEmbedding):
         model_name: str = 'Last Element Transformer Aggregator'
         self.aggregator: BaseAggregator = LastElementAggregator(input_dim=dim, model_name=model_name, config=config)
 
-    def forward(self, batch: Batch, *args, **kwargs) -> Tensor:
+    def forward(self, batch: Batch, *args, **kwargs) -> BaseModelOutput:
         emb: Tensor = self.model.forward(batch.sentence, batch.mask).last_hidden_state
         spans: List[Tensor] = self.construct_spans_ranges(batch)
-        return self.aggregator.aggregate(emb, spans)
+        return BaseModelOutput(batch=batch, features=self.aggregator.aggregate(emb, spans))
 
     def construct_spans_ranges(self, batch: Batch) -> List[Tensor]:
         result_spans: List[Tensor] = list()
