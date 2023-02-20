@@ -2,6 +2,7 @@ from ast import literal_eval
 from typing import List, Tuple
 
 from .triplet import Triplet
+from .span import Span
 from ..encoders import BaseEncoder, TransformerEncoder
 
 
@@ -88,6 +89,12 @@ class Sentence:
 
     def agree_index(self, idx: int) -> int:
         return self.get_index_after_encoding(self.get_index_before_encoding(idx))
+
+    def get_corresponding_opinions(self, span: Span) -> List[Span]:
+        return [triplet.opinion_span for triplet in self.triplets if triplet.aspect_span == span]
+
+    def get_corresponding_aspects(self, span: Span) -> List[Span]:
+        return [triplet.aspect_span for triplet in self.triplets if triplet.opinion_span == span]
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, Sentence):

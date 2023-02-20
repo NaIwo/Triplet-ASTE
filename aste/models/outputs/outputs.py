@@ -3,6 +3,7 @@ from typing import List, TypeVar, Optional, Dict
 import torch
 from torch import Tensor
 
+from ...dataset.domain import ASTELabels, Span
 from ...dataset.reader import Batch
 
 MO = TypeVar('MO', bound='BaseModelOutput')
@@ -33,11 +34,21 @@ class SentimentModelOutput(BaseModelOutput):
 
 
 class SpanInformationOutput(BaseModelOutput):
-    def __init__(self, span_range: Tensor, labels: Tensor, sentiments: Tensor):
+    def __init__(self, span_range: Tensor, labels: Tensor, sentiments: Tensor, sentence: str):
         super().__init__()
         self.span_range: Tensor = span_range
+        self.spans: List[Span] = [Span.from_range(s_range, sentence) for s_range in span_range]
         self.labels: Tensor = labels
         self.sentiments: Tensor = sentiments
+        self.sentence: str = sentence
+
+    def repeat(self, n: int):
+        return SpanInformationOutput(
+            span_range=self.span_range.repeat(1, n, 1).squeeze(dim=0),
+            labels=self.labels.repeat(1, n).squeeze(dim=0),
+            sentiments=self.sentiments.repeat(1, n).squeeze(dim=0),
+            sentence=self.sentence
+        )
 
 
 class SpanPredictionsOutput(BaseModelOutput):
@@ -91,7 +102,7 @@ class SpanCreatorOutput(BaseModelOutput):
         ]
 
     def extend_opinion_embeddings(self, data: SentimentModelOutput):
-        opinions_agg_emb = torch.tensor(data.sentiment_features.values()).to(data.sentiment_features)
+        opinions_agg_emb = torch.cat(list(data.sentiment_features.values()), dim=1).to(self.aspects_agg_emb)
         predicted_spans = self.predicted_spans
         predicted_spans.opinions = self._extend_opinion_information(self.predicted_spans.opinions, data)
         return SpanCreatorOutput(
@@ -111,12 +122,21 @@ class SpanCreatorOutput(BaseModelOutput):
         results: List = list()
 
         keys = data.sentiment_features.keys()
-        key: int
         opinion: SpanInformationOutput
-        for opinion, key in zip(opinions, keys):
-            op = [opinion] * len(keys)
-            results.append(op)
+        for opinion in opinions:
+            num_elements: int = opinion.labels.shape[0]
+            repeated_opinion: SpanInformationOutput = opinion.repeat(len(keys))
+            for key_idx, key in enumerate(keys):
+                indexes = range(key_idx * num_elements, num_elements * (key_idx + 1))
+                repeated_opinion.labels[indexes] = (repeated_opinion.sentiments[indexes] == key)
+                labels: Tensor = repeated_opinion.labels[indexes]
+                repeated_opinion.sentiments[indexes] = torch.where(labels, key, ASTELabels.NOT_RELEVANT)
         return results
+
+
+class TripletModelOutput(BaseModelOutput):
+    def __init__(self):
+        super().__init__()
 
 
 class ModelOutput(BaseModelOutput):
@@ -125,14 +145,12 @@ class ModelOutput(BaseModelOutput):
             self,
             batch: Batch,
             span_creator_output: SpanCreatorOutput,
-            span_selector_output: Tensor,
-            triplet_results: Tensor
+            triplet_results: TripletModelOutput
     ):
         super().__init__(batch=batch)
 
         self.span_creator_output: SpanCreatorOutput = span_creator_output.release_memory()
-        self.span_selector_output: Tensor = span_selector_output
-        self.triplet_results: Tensor = triplet_results
+        self.triplet_results: TripletModelOutput = triplet_results
 
     # def __str__(self):
     #     return str(self.result)

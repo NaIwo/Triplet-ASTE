@@ -88,7 +88,7 @@ class SpanCreatorModel(BaseModel):
         labels: List[int] = list()
         sentiments: List[int] = list()
 
-        if self.training:
+        if not self.training:
             self._add_true_information(span_ranges, labels, sentiments, sample, source)
 
         idx: int
@@ -111,18 +111,19 @@ class SpanCreatorModel(BaseModel):
         return SpanInformationOutput(
             span_range=torch.tensor(span_ranges).to(self.config['general-training']['device']),
             labels=torch.tensor(labels).to(self.config['general-training']['device']),
-            sentiments=torch.tensor(sentiments).to(self.config['general-training']['device'])
+            sentiments=torch.tensor(sentiments).to(self.config['general-training']['device']),
+            sentence=sample.sentence_obj[0].sentence
         )
 
     @staticmethod
     def _replace_not_split(seq: Tensor, source: str) -> Tensor:
-        condition = torch.tensor(seq != SpanCode[f'BEGIN_{source}']) & \
-                    torch.tensor(seq != SpanCode[f'INSIDE_{source}'])
+        condition = (seq != SpanCode[f'BEGIN_{source}']) & \
+                    (seq != SpanCode[f'INSIDE_{source}'])
         seq = torch.where(condition, SpanCode.NOT_SPLIT, seq)
         return seq
 
     def _get_begin_indices(self, seq: Tensor, sample: Batch, source: str) -> List[int]:
-        begins = torch.where(torch.tensor(seq == SpanCode[f'BEGIN_{source}']))[0]
+        begins = torch.where(seq == SpanCode[f'BEGIN_{source}'])[0]
         end = sum(sample.emb_mask[0]) - (2 * sample.sentence_obj[0].encoder.offset)
         end = torch.tensor([end], device=self.config['general-training']['device'])
         begins = torch.cat((begins, end))
@@ -145,7 +146,7 @@ class SpanCreatorModel(BaseModel):
     def _get_end_idx(seq: Tensor, b_idx: int, end_idx: int) -> int:
         s: Tensor = seq[b_idx:end_idx]
         if SpanCode.NOT_SPLIT in s:
-            end_idx = int(torch.where(torch.tensor(s == SpanCode.NOT_SPLIT))[0][0])
+            end_idx = int(torch.where(s == SpanCode.NOT_SPLIT)[0][0])
             end_idx += b_idx - 1
         return end_idx
 

@@ -5,7 +5,6 @@ general-training:
   include-sub-words-info-in-mask: False
   best-epoch-objective: SpanF1 # you can choose: loss and all metrics with correct prefix
 dataset:
-  number-of-polarities: 3
   polarities: # Ay this moment only subset of {POS, NEG, NEU}
     - POS
     - NEG
@@ -18,12 +17,6 @@ model:
   weighted-loss: True
   span_creator:
     loss-weight: 2.0
-  selector:
-    dice-loss-alpha: 0.5
-    loss-weight: 1.0
-    sigmoid-multiplication: 2.0 # In the training phase of the full model, increase the importance of the sigmoid input
-    # [sigmoid(value * neuron)] -
-    # more drastic incorrect span omitting
   triplet-extractor:
     loss-weight: 3.0
 encoder:

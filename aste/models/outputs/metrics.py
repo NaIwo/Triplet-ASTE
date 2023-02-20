@@ -10,17 +10,14 @@ MM = TypeVar('MM', bound='ModelMetric')
 class ModelMetric:
     NAME: str = 'Metrics'
 
-    def __init__(self, *, span_creator_metric: Optional[Dict] = None, span_selector_metric: Optional[Dict] = None,
-                 triplet_metric: Optional[Dict] = None):
+    def __init__(self, *, span_creator_metric: Optional[Dict] = None, triplet_metric: Optional[Dict] = None):
         self.span_creator_metric: Optional[Dict] = span_creator_metric
-        self.span_selector_metric: Optional[Dict] = span_selector_metric
         self.triplet_metric: Optional[Dict] = triplet_metric
 
     @classmethod
-    def from_instances(cls, *, span_creator_metric: MM, triplet_metric: MM, span_selector_metric: MM) -> MM:
+    def from_instances(cls, *, span_creator_metric: MM, triplet_metric: MM) -> MM:
         return cls(
             span_creator_metric=span_creator_metric.span_creator_metric,
-            span_selector_metric=span_selector_metric.span_selector_metric,
             triplet_metric=triplet_metric.triplet_metric
         )
 
@@ -28,7 +25,6 @@ class ModelMetric:
     def _all_metrics(self) -> Dict:
         return {
             'span_creator_metrics': self.span_creator_metric,
-            'span_selector_metric': self.span_selector_metric,
             'triplet_metric': self.triplet_metric
         }
 

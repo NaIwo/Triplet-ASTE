@@ -6,5 +6,6 @@ from .outputs import (
     SpanCreatorOutput,
     SpanPredictionsOutput,
     SpanInformationOutput,
-    SentimentModelOutput
+    SentimentModelOutput,
+    TripletModelOutput
 )

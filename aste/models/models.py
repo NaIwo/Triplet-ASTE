@@ -14,7 +14,15 @@ from .model_elements.span_aggregators import (
     BaseAggregator,
     EndPointAggregator
 )
-from .outputs import ModelOutput, ModelLoss, ModelMetric, SpanCreatorOutput, BaseModelOutput, SentimentModelOutput
+from .outputs import (
+    ModelOutput,
+    ModelLoss,
+    ModelMetric,
+    SpanCreatorOutput,
+    BaseModelOutput,
+    SentimentModelOutput,
+    TripletModelOutput
+)
 from .specialty_models import SpanCreatorModel, TripletExtractorModel, EmbeddingsExtenderModel
 from ..dataset.reader import Batch
 
@@ -46,18 +54,18 @@ class TransformerBasedModel(BaseModel):
         extended_opinions: SentimentModelOutput = self.sentiment_extender(span_creator_output.opinions_agg_emb)
         span_creator_output = span_creator_output.extend_opinion_embeddings(extended_opinions)
 
+        triplet_output: TripletModelOutput = self.triplets_extractor(span_creator_output)
+
         return ModelOutput(
             batch=batch,
             span_creator_output=span_creator_output,
-            span_selector_output=span_creator_output,
-            triplet_results=span_creator_output
+            triplet_results=triplet_output,
         )
 
     def get_loss(self, model_out: ModelOutput) -> ModelLoss:
         return ModelLoss.from_instances(
             span_creator_loss=self.span_creator.get_loss(model_out) * self.span_creator.trainable,
             triplet_extractor_loss=self.triplets_extractor.get_loss(model_out) * self.triplets_extractor.trainable,
-            span_selector_loss=self.span_selector.get_loss(model_out) * self.span_selector.trainable,
             config=self.config
         )
 
@@ -70,7 +78,6 @@ class TransformerBasedModel(BaseModel):
         return ModelMetric.from_instances(
             span_creator_metric=self.span_creator.get_metrics(),
             triplet_metric=self.triplets_extractor.get_metrics(),
-            span_selector_metric=self.span_selector.get_metrics()
         )
 
     def reset_metrics(self) -> None:
@@ -86,9 +93,6 @@ class TransformerBasedModel(BaseModel):
         self.log("val_loss", loss.full_loss, on_epoch=True, prog_bar=True, logger=True, sync_dist=True,
                  batch_size=self.config['general-training']['batch-size'])
         self.log("val_loss_span_creator_loss", loss.span_creator_loss, on_epoch=True, prog_bar=False, logger=True,
-                 sync_dist=True,
-                 batch_size=self.config['general-training']['batch-size'])
-        self.log("val_loss_span_selector_loss", loss.span_selector_loss, on_epoch=True, prog_bar=False, logger=True,
                  sync_dist=True, batch_size=self.config['general-training']['batch-size'])
         self.log("val_loss_triplet_extractor_loss", loss.triplet_extractor_loss, on_epoch=True, prog_bar=False,
                  logger=True, sync_dist=True, batch_size=self.config['general-training']['batch-size'])
