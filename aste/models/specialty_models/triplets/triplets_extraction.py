@@ -1,10 +1,15 @@
-from typing import Dict
+from typing import Dict, Callable
 
 import torch
 from torch import Tensor
 
-from ....dataset.domain import ASTELabels
+from .triplet_utils import (
+    create_embeddings_matrix_by_concat,
+    create_mask_matrix_for_training,
+    create_mask_matrix_for_validation
+)
 from ...models import BaseModel
+from ....dataset.domain import ASTELabels
 from ....models.outputs import ModelOutput, ModelLoss, ModelMetric, TripletModelOutput, SpanCreatorOutput
 from ....tools.metrics import Metric, get_selected_metrics
 
@@ -17,24 +22,22 @@ class TripletExtractorModel(BaseModel):
         self.final_metrics: Metric = Metric(name='Final predictions', metrics=metrics).to(
             self.config['general-training']['device'])
 
+        self.create_embeddings_matrix: Callable = create_embeddings_matrix_by_concat
         input_dimension: int = input_dim * 2
 
     def forward(self, data_input: SpanCreatorOutput) -> TripletModelOutput:
         matrix: Tensor = self.create_embeddings_matrix(data_input)
+        mask_matrix: Tensor = self.create_mask_matrix(data_input)
         a = 1
 
-    @staticmethod
-    def create_embeddings_matrix(data: SpanCreatorOutput) -> Tensor:
-        aspects: Tensor = data.aspects_agg_emb.unsqueeze(2)
-        opinions: Tensor = data.opinions_agg_emb.unsqueeze(1)
-
-        aspects = aspects.expand(-1, -1, data.opinions_agg_emb.shape[1], -1)
-        opinions = opinions.expand(-1, data.aspects_agg_emb.shape[1], -1, -1)
-
-        return torch.cat([aspects, opinions], dim=-1)
+    def create_mask_matrix(self, data: SpanCreatorOutput) -> Tensor:
+        if self.training:
+            mask_matrix: Tensor = create_mask_matrix_for_training(data)
+        else:
+            mask_matrix: Tensor = create_mask_matrix_for_validation(data)
+        return mask_matrix
 
     def get_loss(self, model_out: ModelOutput) -> ModelLoss:
-
         return ModelLoss(triplet_extractor_loss=0, config=self.config)
 
     def update_metrics(self, model_out: ModelOutput) -> None:

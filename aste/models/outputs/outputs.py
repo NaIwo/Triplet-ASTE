@@ -2,8 +2,9 @@ from typing import List, TypeVar, Optional, Dict
 
 import torch
 from torch import Tensor
+from torch.nn.utils.rnn import pad_sequence
 
-from ...dataset.domain import ASTELabels, Span
+from ...dataset.domain import ASTELabels, Sentence, Span
 from ...dataset.reader import Batch
 
 MO = TypeVar('MO', bound='BaseModelOutput')
@@ -34,21 +35,53 @@ class SentimentModelOutput(BaseModelOutput):
 
 
 class SpanInformationOutput(BaseModelOutput):
-    def __init__(self, span_range: Tensor, labels: Tensor, sentiments: Tensor, sentence: str):
+    def __init__(
+            self,
+            span_range: Tensor,
+            labels: Tensor,
+            sentiments: Tensor,
+            mapping_indexes: Tensor,
+            sentence: Sentence,
+            repeated: Optional[int] = None
+    ):
         super().__init__()
         self.span_range: Tensor = span_range
-        self.spans: List[Span] = [Span.from_range(s_range, sentence) for s_range in span_range]
         self.labels: Tensor = labels
         self.sentiments: Tensor = sentiments
-        self.sentence: str = sentence
+        self.mapping_indexes: Tensor = mapping_indexes
+        self.sentence: Sentence = sentence
+        self.spans: List[Span] = self._construct_predicted_spans()
+        self.repeated: Optional[int] = repeated
+
+    def _construct_predicted_spans(self) -> List[Span]:
+        spans: List[Span] = list()
+        for s_range in self.span_range:
+            s_range = [
+                self.sentence.get_index_before_encoding(s_range[0]),
+                self.sentence.get_index_before_encoding(s_range[1])
+            ]
+            spans.append(Span.from_range(s_range, self.sentence.sentence))
+        return spans
 
     def repeat(self, n: int):
         return SpanInformationOutput(
-            span_range=self.span_range.repeat(1, n, 1).squeeze(dim=0),
-            labels=self.labels.repeat(1, n).squeeze(dim=0),
-            sentiments=self.sentiments.repeat(1, n).squeeze(dim=0),
-            sentence=self.sentence
+            span_range=self.span_range.repeat(n, 1).squeeze(dim=0),
+            labels=self.labels.repeat(n),
+            sentiments=self.sentiments.repeat(n),
+            mapping_indexes=self._get_repeated_mapping_indexes(n),
+            sentence=self.sentence,
+            repeated=n
         )
+
+    def _get_repeated_mapping_indexes(self, n: int) -> Tensor:
+        repeated_indexes = self.mapping_indexes.repeat(n)
+
+        mask = (self.mapping_indexes >= 0).repeat(n)
+        indexes = torch.full_like(self.mapping_indexes, self.mapping_indexes.shape[0]).repeat(n).to(self.sentiments)
+        skip = torch.arange(n).unsqueeze(-1).repeat(1, self.mapping_indexes.shape[0]).flatten().to(self.sentiments)
+        repeated_indexes += (indexes * skip) * mask
+
+        return repeated_indexes
 
 
 class SpanPredictionsOutput(BaseModelOutput):
@@ -63,21 +96,25 @@ class SpanPredictionsOutput(BaseModelOutput):
     def get_opinion_span_predictions(self) -> List[Tensor]:
         return self._get(self.opinions, 'span_range')
 
-    def get_aspect_span_labels(self) -> List[Tensor]:
-        return self._get(self.aspects, 'labels')
+    def get_aspect_span_labels(self) -> Tensor:
+        return self._pad(self._get(self.aspects, 'labels'), 0)
 
-    def get_opinion_span_labels(self) -> List[Tensor]:
-        return self._get(self.opinions, 'labels')
+    def get_opinion_span_labels(self) -> Tensor:
+        return self._pad(self._get(self.opinions, 'labels'), 0)
 
-    def get_aspect_span_sentiments(self) -> List[Tensor]:
-        return self._get(self.aspects, 'sentiments')
+    def get_aspect_span_sentiments(self) -> Tensor:
+        return self._pad(self._get(self.aspects, 'sentiments'), ASTELabels.NOT_RELEVANT)
 
-    def get_opinion_span_sentiments(self) -> List[Tensor]:
-        return self._get(self.opinions, 'sentiments')
+    def get_opinion_span_sentiments(self) -> Tensor:
+        return self._pad(self._get(self.opinions, 'sentiments'), ASTELabels.NOT_RELEVANT)
 
     @staticmethod
     def _get(source: List[SpanInformationOutput], attr: str) -> List[Tensor]:
         return [getattr(span, attr) for span in source]
+
+    @staticmethod
+    def _pad(data: List[Tensor], pad_value: int) -> Tensor:
+        return pad_sequence(data, padding_value=pad_value, batch_first=True)
 
 
 class SpanCreatorOutput(BaseModelOutput):
@@ -131,6 +168,7 @@ class SpanCreatorOutput(BaseModelOutput):
                 repeated_opinion.labels[indexes] = (repeated_opinion.sentiments[indexes] == key)
                 labels: Tensor = repeated_opinion.labels[indexes]
                 repeated_opinion.sentiments[indexes] = torch.where(labels, key, ASTELabels.NOT_RELEVANT)
+            results.append(repeated_opinion)
         return results
 
 

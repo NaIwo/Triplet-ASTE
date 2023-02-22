@@ -1,6 +1,5 @@
 from typing import List, Optional, Callable, Dict
 
-import numpy as np
 import torch
 from torch import Tensor
 
@@ -85,11 +84,12 @@ class SpanCreatorModel(BaseModel):
         begins = self._get_begin_indices(seq, sample, source)
 
         span_ranges: List[List[int, int]] = list()
+        mapping_indexes: List[int] = list()
         labels: List[int] = list()
         sentiments: List[int] = list()
 
-        if not self.training:
-            self._add_true_information(span_ranges, labels, sentiments, sample, source)
+        if self.training:
+            self._add_true_information(span_ranges, labels, sentiments, mapping_indexes, sample, source)
 
         idx: int
         b_idx: int
@@ -98,21 +98,22 @@ class SpanCreatorModel(BaseModel):
             end_idx = self._get_end_idx(seq, b_idx, end_idx)
             if (end_idx >= b_idx) and ([b_idx, end_idx] not in span_ranges):
                 span_ranges.append([b_idx, end_idx])
-                self._add_labels_and_sentiments(labels, sentiments, 1)
+                self._add_remaining_information(labels, sentiments, mapping_indexes, 1)
 
         if not span_ranges:
             span_ranges.append([0, len(seq) - 1])
-            self._add_labels_and_sentiments(labels, sentiments, 1)
+            self._add_remaining_information(labels, sentiments, mapping_indexes, 1)
         else:
             self.extend_span_ranges(span_ranges, sample)
             added_count: int = len(span_ranges) - len(sentiments)
-            self._add_labels_and_sentiments(labels, sentiments, added_count)
+            self._add_remaining_information(labels, sentiments, mapping_indexes, added_count)
 
         return SpanInformationOutput(
             span_range=torch.tensor(span_ranges).to(self.config['general-training']['device']),
             labels=torch.tensor(labels).to(self.config['general-training']['device']),
             sentiments=torch.tensor(sentiments).to(self.config['general-training']['device']),
-            sentence=sample.sentence_obj[0].sentence
+            mapping_indexes=torch.tensor(mapping_indexes).to(self.config['general-training']['device']),
+            sentence=sample.sentence_obj[0]
         )
 
     @staticmethod
@@ -132,15 +133,23 @@ class SpanCreatorModel(BaseModel):
         return begins
 
     @staticmethod
-    def _add_true_information(span_ranges: List, labels: List, sentiments: List, sample: Batch, source: str) -> None:
-        true_spans: List = getattr(sample, f'{source.lower()}_spans')[0].tolist()
-        true_spans: np.ndarray
-        unique_idx: np.ndarray
-        true_spans, unique_idx = np.unique(true_spans, return_index=True, axis=0)
-        true_sentiments: List = sample.sentiments[0][unique_idx].tolist()
+    def _add_true_information(
+            span_ranges: List,
+            labels: List,
+            sentiments: List,
+            mapping_indexes: List,
+            sample: Batch,
+            source: str
+    ) -> None:
+        true_spans: Tensor = getattr(sample, f'{source.lower()}_spans')[0]
+
+        true_spans: Tensor
+        unique_idx: Tensor
+        true_spans, mapping_idx = torch.unique(true_spans, return_inverse=True, dim=0)
         span_ranges += true_spans.tolist()
-        labels += [True] * unique_idx.shape[0]
-        sentiments += true_sentiments
+        mapping_indexes += mapping_idx.tolist()
+        labels += [True] * true_spans.shape[0]
+        sentiments += sample.sentiments[0].tolist()
 
     @staticmethod
     def _get_end_idx(seq: Tensor, b_idx: int, end_idx: int) -> int:
@@ -150,9 +159,10 @@ class SpanCreatorModel(BaseModel):
             end_idx += b_idx - 1
         return end_idx
 
-    def _add_labels_and_sentiments(self, labels: List, sentiments: List, count: int) -> None:
+    def _add_remaining_information(self, labels: List, sentiments: List, mapping_indexes: List, count: int) -> None:
         labels += [not self.training] * count
         sentiments += [ASTELabels.NOT_RELEVANT] * count
+        mapping_indexes += [-1] * count
 
     def extend_span_ranges(self, span_ranges: List, sample: Batch) -> None:
         before: Callable = sample.sentence_obj[0].get_index_before_encoding

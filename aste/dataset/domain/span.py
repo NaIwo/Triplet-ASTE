@@ -26,6 +26,9 @@ class Span:
     def __repr__(self):
         return self.__str__()
 
+    def __hash__(self):
+        return hash(self.__repr__())
+
     def __eq__(self, other) -> bool:
         return (self.start_idx == other.start_idx) and (self.end_idx == other.end_idx) and (
                 self.span_words == other.span_words)
