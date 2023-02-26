@@ -11,14 +11,16 @@ dataset:
     - NEU
 model:
   learning-rate: 0.0001
+  add-true-spans: True
   transformer:
     learning-rate: 0.00001
     source: microsoft/deberta-base
   weighted-loss: True
-  span_creator:
+  span-creator:
     loss-weight: 2.0
   triplet-extractor:
     loss-weight: 3.0
+    threshold: 0.1
 encoder:
   transformer:
     source: microsoft/deberta-base

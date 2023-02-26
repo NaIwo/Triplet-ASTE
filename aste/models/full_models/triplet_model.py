@@ -8,33 +8,32 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .base_model import BaseModel
-from .model_elements.embeddings import BaseEmbedding, TransformerWithAggregation
-from .model_elements.span_aggregators import (
+from ..base_model import BaseModel
+from .triplet_model_outputs import ModelOutput
+from ..model_elements.embeddings import BaseEmbedding, TransformerWithAggregation
+from ..model_elements.span_aggregators import (
     BaseAggregator,
     EndPointAggregator
 )
-from .outputs import (
-    ModelOutput,
+from ..outputs import (
     ModelLoss,
     ModelMetric,
-    SpanCreatorOutput,
-    BaseModelOutput,
-    SentimentModelOutput,
-    TripletModelOutput
+    BaseModelOutput
 )
-from .specialty_models import SpanCreatorModel, TripletExtractorModel, EmbeddingsExtenderModel
-from ..dataset.reader import Batch
+from ..specialty_models import SpanCreatorModel, TripletExtractorModel, EmbeddingsExtenderModel
+from ..specialty_models import SpanCreatorOutput, TripletModelOutput, SentimentModelOutput
+from ...dataset.reader import Batch
 
 
-class TransformerBasedModel(BaseModel):
+class TripletModel(BaseModel):
     def __init__(self, model_name='Transformer Based Model', config: Dict = base_config, *args, **kwargs):
-        super(TransformerBasedModel, self).__init__(model_name, config=config)
+        super(TripletModel, self).__init__(model_name, config=config)
 
         self.emb_layer: BaseEmbedding = TransformerWithAggregation(config=config)
         self.span_creator: BaseModel = SpanCreatorModel(input_dim=self.emb_layer.embedding_dim, config=config)
         self.aggregator: BaseAggregator = EndPointAggregator(input_dim=self.emb_layer.embedding_dim, config=config)
-        self.sentiment_extender: BaseModel = EmbeddingsExtenderModel(input_dim=self.aggregator.output_dim, config=config)
+        self.sentiment_extender: BaseModel = EmbeddingsExtenderModel(input_dim=self.aggregator.output_dim,
+                                                                     config=config)
         self.triplets_extractor: BaseModel = TripletExtractorModel(input_dim=self.aggregator.output_dim, config=config)
 
     def forward(self, batch: Batch) -> ModelOutput:
@@ -64,8 +63,9 @@ class TransformerBasedModel(BaseModel):
 
     def get_loss(self, model_out: ModelOutput) -> ModelLoss:
         return ModelLoss.from_instances(
-            span_creator_loss=self.span_creator.get_loss(model_out) * self.span_creator.trainable,
-            triplet_extractor_loss=self.triplets_extractor.get_loss(model_out) * self.triplets_extractor.trainable,
+            span_creator_loss=self.span_creator.get_loss(model_out.span_creator_output) * self.span_creator.trainable,
+            triplet_extractor_loss=self.triplets_extractor.get_loss(
+                model_out.triplet_results) * self.triplets_extractor.trainable,
             config=self.config
         )
 

@@ -1,4 +1,3 @@
-from .outputs import ModelOutput, ModelLoss, ModelMetric
+from .outputs import ModelLoss, ModelMetric, BaseModelOutput
 from .base_model import BaseModel
-from .models import TransformerBasedModel
-
+from .full_models import TripletModel, ModelOutput

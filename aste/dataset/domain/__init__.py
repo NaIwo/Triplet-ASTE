@@ -1,4 +1,4 @@
-from .const import ASTELabels, SpanCode
+from .const import ASTELabels, SpanCode, CreatedSpanCodes
 from .sentence import Sentence
 from .triplet import Triplet
 from .span import Span

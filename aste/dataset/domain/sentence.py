@@ -1,9 +1,6 @@
 from ast import literal_eval
-from collections import defaultdict
-from functools import lru_cache
-from typing import List, Tuple, Dict
+from typing import List, Tuple
 
-from .span import Span
 from .triplet import Triplet
 from ..encoders import BaseEncoder, TransformerEncoder
 

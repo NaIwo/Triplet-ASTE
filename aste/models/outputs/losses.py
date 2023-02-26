@@ -46,7 +46,7 @@ class ModelLoss:
         return self
 
     def _include_weights(self) -> None:
-        self.span_creator_loss *= self.config['model']['span_creator']['loss-weight']
+        self.span_creator_loss *= self.config['model']['span-creator']['loss-weight']
         self.triplet_extractor_loss *= self.config['model']['triplet-extractor']['loss-weight']
 
     def backward(self) -> None:

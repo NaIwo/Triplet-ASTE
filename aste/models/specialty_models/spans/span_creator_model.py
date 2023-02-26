@@ -1,19 +1,17 @@
-from typing import List, Optional, Callable, Dict
+from typing import List, Optional, Dict
 
 import torch
 from torch import Tensor
 
-from ....dataset.domain import SpanCode, ASTELabels
+from .span_outputs import SpanInformationOutput, SpanPredictionsOutput, SpanCreatorOutput
+from .spans_manager import SpanInformationManager
+from ....dataset.domain import SpanCode, CreatedSpanCodes
 from ....dataset.reader import Batch
 from ....models import BaseModel
 from ....models.outputs import (
     ModelLoss,
     ModelMetric,
-    SpanCreatorOutput,
-    BaseModelOutput,
-    ModelOutput,
-    SpanPredictionsOutput,
-    SpanInformationOutput
+    BaseModelOutput
 )
 from ....models.specialty_models.spans.crf import CRF
 from ....tools.metrics import Metric, get_selected_metrics
@@ -25,7 +23,7 @@ class SpanCreatorModel(BaseModel):
             input_dim: int,
             config: Dict,
             model_name: str = 'Span Creator Model',
-            extend_spans: Optional[List[int]] = None
+            extend_ranges: Optional[List[int]] = None
     ):
         super(SpanCreatorModel, self).__init__(model_name, config=config)
 
@@ -34,9 +32,9 @@ class SpanCreatorModel(BaseModel):
             metrics=get_selected_metrics(for_spans=True)
         ).to(self.config['general-training']['device'])
 
-        self.extend_spans: Optional[List[int]] = extend_spans
-        if extend_spans is None:
-            self.extend_spans: List[int] = []
+        self.extend_ranges: Optional[List[int]] = extend_ranges
+        if extend_ranges is None:
+            self.extend_ranges: List[int] = []
 
         self.input_dim: int = input_dim
 
@@ -83,38 +81,27 @@ class SpanCreatorModel(BaseModel):
         seq = self._replace_not_split(seq, source)
         begins = self._get_begin_indices(seq, sample, source)
 
-        span_ranges: List[List[int, int]] = list()
-        mapping_indexes: List[int] = list()
-        labels: List[int] = list()
-        sentiments: List[int] = list()
+        span_manager = SpanInformationManager()
 
-        if self.training:
-            self._add_true_information(span_ranges, labels, sentiments, mapping_indexes, sample, source)
+        code = CreatedSpanCodes.ADDED_TRUE if self.config['model']['add-true-spans'] else CreatedSpanCodes.NOT_RELEVANT
+        span_manager.add_true_information(sample, source, code)
 
         idx: int
         b_idx: int
         for idx, b_idx in enumerate(begins[:-1]):
             end_idx: int = begins[idx + 1] - 1
             end_idx = self._get_end_idx(seq, b_idx, end_idx)
-            if (end_idx >= b_idx) and ([b_idx, end_idx] not in span_ranges):
-                span_ranges.append([b_idx, end_idx])
-                self._add_remaining_information(labels, sentiments, mapping_indexes, 1)
+            span_manager.add_predicted_information(b_idx, end_idx)
 
-        if not span_ranges:
-            span_ranges.append([0, len(seq) - 1])
-            self._add_remaining_information(labels, sentiments, mapping_indexes, 1)
+        if not span_manager.span_ranges:
+            span_manager.add_predicted_information(0, len(seq) - 1)
         else:
-            self.extend_span_ranges(span_ranges, sample)
-            added_count: int = len(span_ranges) - len(sentiments)
-            self._add_remaining_information(labels, sentiments, mapping_indexes, added_count)
+            span_manager.extend_span_ranges(sample, self.extend_ranges)
 
-        return SpanInformationOutput(
-            span_range=torch.tensor(span_ranges).to(self.config['general-training']['device']),
-            labels=torch.tensor(labels).to(self.config['general-training']['device']),
-            sentiments=torch.tensor(sentiments).to(self.config['general-training']['device']),
-            mapping_indexes=torch.tensor(mapping_indexes).to(self.config['general-training']['device']),
-            sentence=sample.sentence_obj[0]
-        )
+        return SpanInformationOutput.from_span_manager(
+            span_manager,
+            sample.sentence_obj[0]
+        ).to_device(self.config['general-training']['device'])
 
     @staticmethod
     def _replace_not_split(seq: Tensor, source: str) -> Tensor:
@@ -133,25 +120,6 @@ class SpanCreatorModel(BaseModel):
         return begins
 
     @staticmethod
-    def _add_true_information(
-            span_ranges: List,
-            labels: List,
-            sentiments: List,
-            mapping_indexes: List,
-            sample: Batch,
-            source: str
-    ) -> None:
-        true_spans: Tensor = getattr(sample, f'{source.lower()}_spans')[0]
-
-        true_spans: Tensor
-        unique_idx: Tensor
-        true_spans, mapping_idx = torch.unique(true_spans, return_inverse=True, dim=0)
-        span_ranges += true_spans.tolist()
-        mapping_indexes += mapping_idx.tolist()
-        labels += [True] * true_spans.shape[0]
-        sentiments += sample.sentiments[0].tolist()
-
-    @staticmethod
     def _get_end_idx(seq: Tensor, b_idx: int, end_idx: int) -> int:
         s: Tensor = seq[b_idx:end_idx]
         if SpanCode.NOT_SPLIT in s:
@@ -159,37 +127,9 @@ class SpanCreatorModel(BaseModel):
             end_idx += b_idx - 1
         return end_idx
 
-    def _add_remaining_information(self, labels: List, sentiments: List, mapping_indexes: List, count: int) -> None:
-        labels += [not self.training] * count
-        sentiments += [ASTELabels.NOT_RELEVANT] * count
-        mapping_indexes += [-1] * count
-
-    def extend_span_ranges(self, span_ranges: List, sample: Batch) -> None:
-        before: Callable = sample.sentence_obj[0].get_index_before_encoding
-        after: Callable = sample.sentence_obj[0].get_index_after_encoding
-
-        begin: int
-        end: int
-        for begin, end in span_ranges:
-            temp: List = [[after(before(begin) + shift), end] for shift in self.extend_spans]
-            self._add_correct_extended(span_ranges, temp)
-
-            temp: List = [[begin, after(before(end) + shift)] for shift in self.extend_spans]
-            self._add_correct_extended(span_ranges, temp)
-
-    @staticmethod
-    def _add_correct_extended(results: List, extended: List) -> List:
-        begin: int
-        end: int
-        for begin, end in extended:
-            if -1 != end >= begin != -1 and [begin, end] not in results:
-                results.append([begin, end])
-
-        return results
-
-    def get_loss(self, model_out: ModelOutput) -> ModelLoss:
+    def get_loss(self, model_out: SpanCreatorOutput) -> ModelLoss:
         loss = -self.crf(
-            model_out.span_creator_output.features,
+            model_out.features,
             model_out.batch.chunk_label,
             model_out.batch.emb_mask,
             reduction='token_mean'
@@ -199,8 +139,8 @@ class SpanCreatorModel(BaseModel):
             config=self.config
         )
 
-    def update_metrics(self, model_out: ModelOutput) -> None:
-        predicted = model_out.span_creator_output.all_predicted_spans
+    def update_metrics(self, model_out: SpanCreatorOutput) -> None:
+        predicted = model_out.all_predicted_spans
         b: Batch = model_out.batch
         for pred, aspect, opinion in zip(predicted, b.aspect_spans, b.opinion_spans):
             true: Tensor = torch.cat([aspect, opinion], dim=0).unique(dim=0)

@@ -5,7 +5,7 @@ import fire
 from aste.configs import base_config, setup_config
 from aste.dataset.encoders import TransformerEncoder
 from aste.dataset.reader import DatasetLoader
-from aste.models import BaseModel, TransformerBasedModel
+from aste.models import BaseModel, TripletModel
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
@@ -28,7 +28,7 @@ def train_model(data_path: str = os.path.join('.', 'dataset', 'data', 'ASTE_data
     test_data = dataset_reader.load('test.txt', shuffle=False)
 
     # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ MODEL \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
-    model: BaseModel = TransformerBasedModel(config=config)
+    model: BaseModel = TripletModel(config=config)
 
     # \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ TRAINER ELEMENTS \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
