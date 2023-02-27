@@ -33,22 +33,10 @@ class SpanMetric(TorchMetric):
         self.add_state("total_predicted", default=torch.tensor(0), dist_reduce_fx="sum")
         self.add_state("total_target", default=torch.tensor(0), dist_reduce_fx="sum")
 
-    def update(self, preds: Tensor, target_in_stage: Tensor, full_target_count: Optional[int] = None) -> None:
-        preds = preds.unique(dim=0)
-        target_in_stage = target_in_stage.unique(dim=0)
-
-        if full_target_count is None:
-            full_target_count = target_in_stage.shape[0]
-
-        self.correct += self._count_correct_num(preds, target_in_stage)
-        self.total_predicted += preds.shape[0]
+    def update(self, preds: int, target_in_stage: int, full_target_count: Optional[int] = None) -> None:
+        self.correct += target_in_stage
+        self.total_predicted += preds
         self.total_target += full_target_count
-
-    @staticmethod
-    def _count_correct_num(preds: Tensor, target: Tensor) -> int:
-        all_data: Tensor = torch.cat([preds, target])
-        uniques, counts = torch.unique(all_data, return_counts=True, dim=0)
-        return uniques[counts == 2].shape[0]
 
     def compute(self) -> float:
         raise NotImplemented

@@ -3,7 +3,8 @@ from typing import List, Callable
 import torch
 from torch import Tensor
 
-from ....dataset.domain import CreatedSpanCodes, ASTELabels
+from ....dataset.domain import ASTELabels
+from ..const import CreatedSpanCodes
 from ....dataset.reader import Batch
 
 

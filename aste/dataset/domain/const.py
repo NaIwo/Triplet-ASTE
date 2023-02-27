@@ -1,5 +1,4 @@
 from enum import IntEnum
-from typing import List
 
 
 class SpanCode(IntEnum):
@@ -17,13 +16,3 @@ class ASTELabels(IntEnum):
     NEG: int = 1
     NOT_PAIR: int = 0
     NOT_RELEVANT: int = -1
-
-
-class CreatedSpanCodes(IntEnum):
-    NOT_RELEVANT: int = -1
-
-    ADDED_FALSE: int = 0
-    ADDED_TRUE: int = 1
-
-    PREDICTED_FALSE: int = 2
-    PREDICTED_TRUE: int = 3

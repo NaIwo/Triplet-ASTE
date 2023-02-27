@@ -5,7 +5,8 @@ from torch import Tensor
 
 from .span_outputs import SpanInformationOutput, SpanPredictionsOutput, SpanCreatorOutput
 from .spans_manager import SpanInformationManager
-from ....dataset.domain import SpanCode, CreatedSpanCodes
+from ..const import CreatedSpanCodes
+from ....dataset.domain import SpanCode
 from ....dataset.reader import Batch
 from ....models import BaseModel
 from ....models.outputs import (
@@ -140,12 +141,18 @@ class SpanCreatorModel(BaseModel):
         )
 
     def update_metrics(self, model_out: SpanCreatorOutput) -> None:
-        predicted = model_out.all_predicted_spans
+        pred = model_out.predicted_spans
+        idx: int
         b: Batch = model_out.batch
-        for pred, aspect, opinion in zip(predicted, b.aspect_spans, b.opinion_spans):
+        for idx, (aspect, opinion) in enumerate(zip(b.aspect_spans, b.opinion_spans)):
+            pred_num = (pred.aspects[idx].span_creation_info == CreatedSpanCodes.PREDICTED_TRUE).sum().item()
+            pred_num += (pred.aspects[idx].span_creation_info == CreatedSpanCodes.PREDICTED_FALSE).sum().item()
+            pred_num += (pred.opinions[idx].span_creation_info == CreatedSpanCodes.PREDICTED_TRUE).sum().item()
+            pred_num += (pred.opinions[idx].span_creation_info == CreatedSpanCodes.PREDICTED_FALSE).sum().item()
+
             true: Tensor = torch.cat([aspect, opinion], dim=0).unique(dim=0)
             true_count: int = true.shape[0] - int(-1 in true)
-            self.metrics(pred, true, true_count)
+            self.metrics(pred_num, true_count, true_count)
 
     def get_metrics(self) -> ModelMetric:
         return ModelMetric(

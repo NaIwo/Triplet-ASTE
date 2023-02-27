@@ -1,13 +1,13 @@
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 
 import torch
 from torch import Tensor
 
+from ..const import CreatedSpanCodes, TripletDimensions
 from ..spans.span_outputs import (
     SpanInformationOutput,
     SpanPredictionsOutput,
-    SpanCreatorOutput,
-    CreatedSpanCodes
+    SpanCreatorOutput
 )
 
 
@@ -20,6 +20,12 @@ def create_embedding_mask_matrix(data: SpanCreatorOutput) -> Tensor:
     relevant_elements: Tensor = _create_bool_mask(data, diff_from=CreatedSpanCodes.NOT_RELEVANT)
 
     return relevant_elements
+
+
+def get_true_predicted_mask(data: SpanCreatorOutput) -> Tensor:
+    true_elements = _create_bool_mask(data, equals_to=CreatedSpanCodes.PREDICTED_TRUE)
+
+    return true_elements
 
 
 def create_mask_matrix_for_loss(data: SpanCreatorOutput) -> Tensor:
@@ -56,11 +62,14 @@ def _create_bool_mask(data: SpanCreatorOutput, *, diff_from: Optional[int] = Non
 
 
 def _expand_aspect_and_opinion(aspect: Tensor, opinion: Tensor) -> Tuple[Tensor, Tensor]:
-    aspects: Tensor = aspect.unsqueeze(2)
-    opinions: Tensor = opinion.unsqueeze(1)
+    aspects: Tensor = aspect.unsqueeze(TripletDimensions.ASPECT)
+    opinions: Tensor = opinion.unsqueeze(TripletDimensions.OPINION)
 
-    aspect_shape: Tuple = (-1, -1, opinion.shape[1], -1)
-    opinion_shape: Tuple = (-1, aspect.shape[1], -1, -1)
+    aspect_shape: List = [-1, -1, -1, -1]
+    aspect_shape[TripletDimensions.ASPECT] = opinion.shape[1]
+
+    opinion_shape: List = [-1, -1, -1, -1]
+    opinion_shape[TripletDimensions.OPINION] = aspect.shape[1]
 
     aspects = aspects.expand(aspect_shape[:len(aspects.shape)])
     opinions = opinions.expand(opinion_shape[:len(opinions.shape)])
@@ -79,6 +88,9 @@ def _create_final_mask(data: SpanCreatorOutput, final_mask: Tensor) -> Tensor:
         o_idx: Tensor = sample_opinions.mapping_indexes
         a_idx = a_idx[a_idx >= 0].repeat(sample_opinions.repeated)
         o_idx = o_idx[o_idx >= 0]
-        temp_mask[a_idx, o_idx] = True
+        if TripletDimensions.ASPECT == 2:
+            temp_mask[a_idx, o_idx] = True
+        else:
+            temp_mask[o_idx, a_idx] = True
         mask &= temp_mask
     return final_mask

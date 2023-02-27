@@ -8,7 +8,8 @@ from .spans_manager import SpanInformationManager
 from ..sentiments.sentiment_outputs import SentimentModelOutput
 from ...outputs import BaseModelOutput
 from ASTE.aste.models.outputs.utils import construct_predicted_spans
-from ....dataset.domain import Sentence, Span, ASTELabels, CreatedSpanCodes
+from ....dataset.domain import Sentence, Span, ASTELabels
+from ..const import CreatedSpanCodes
 from ....dataset.reader import Batch
 
 SIO = TypeVar('SIO', bound='SpanInformationOutput')
@@ -78,11 +79,19 @@ class SpanPredictionsOutput(BaseModelOutput):
         self.aspects: List[SpanInformationOutput] = aspects
         self.opinions: List[SpanInformationOutput] = opinions
 
-    def get_aspect_span_predictions(self) -> List[Tensor]:
-        return self._get(self.aspects, 'span_range')
+    def get_aspect_span_predictions(self, with_repeated: bool = True) -> List[Tensor]:
+        spans = self._get(self.aspects, 'span_range')
+        if (self.aspects[0].repeated is not None) and (not with_repeated):
+            r = self.aspects[0].repeated
+            spans = [s[:s.shape[0] // r] for s in spans]
+        return spans
 
-    def get_opinion_span_predictions(self) -> List[Tensor]:
-        return self._get(self.opinions, 'span_range')
+    def get_opinion_span_predictions(self, with_repeated: bool = True) -> List[Tensor]:
+        spans = self._get(self.opinions, 'span_range')
+        if (self.opinions[0].repeated is not None) and (not with_repeated):
+            r = self.opinions[0].repeated
+            spans = [s[:s.shape[0] // r] for s in spans]
+        return spans
 
     def get_aspect_span_creation_info(self) -> Tensor:
         return self._pad(self._get(self.aspects, 'span_creation_info'), CreatedSpanCodes.NOT_RELEVANT)
@@ -117,12 +126,11 @@ class SpanCreatorOutput(BaseModelOutput):
         self.aspects_agg_emb: Optional[Tensor] = aspects_agg_emb
         self.opinions_agg_emb: Optional[Tensor] = opinions_agg_emb
 
-    @property
-    def all_predicted_spans(self) -> List[Tensor]:
+    def all_predicted_spans(self, with_repeated: bool = False) -> List[Tensor]:
         return [
             torch.cat([a, o], dim=0) for a, o in zip(
-                self.predicted_spans.get_aspect_span_predictions(),
-                self.predicted_spans.get_opinion_span_predictions()
+                self.predicted_spans.get_aspect_span_predictions(with_repeated),
+                self.predicted_spans.get_opinion_span_predictions(with_repeated)
             )
         ]
 

@@ -1,24 +1,25 @@
-from typing import Dict, Callable, List
+from typing import Dict, List
 
 import torch
 from torch import Tensor
 from torch.nn import Sequential
 
+from .triplet_outputs import SampleTripletOutput, TripletModelOutput
 from .triplet_utils import (
     create_embeddings_matrix_by_concat,
     create_mask_matrix_for_loss,
     create_mask_matrix_for_prediction,
-    create_embedding_mask_matrix
+    create_embedding_mask_matrix,
+    get_true_predicted_mask
 )
+from ..const import TripletDimensions
+from ..spans.span_outputs import SpanInformationOutput, SpanPredictionsOutput, SpanCreatorOutput
 from ..utils import sequential_blocks
-from ASTE.aste.models.full_models.triplet_model import BaseModel
-from ....dataset.domain import ASTELabels
+from ...full_models.triplet_model import BaseModel
 from ....models.outputs import (
     ModelLoss,
     ModelMetric
 )
-from .triplet_outputs import SampleTripletOutput, TripletModelOutput
-from ..spans.span_outputs import SpanInformationOutput, SpanPredictionsOutput, SpanCreatorOutput
 from ....tools.metrics import Metric, get_selected_metrics
 
 
@@ -43,12 +44,15 @@ class TripletExtractorModel(BaseModel):
         prediction_mask: Tensor = create_mask_matrix_for_prediction(data_input)
 
         triplets: List[SampleTripletOutput] = self.get_triplets_from_matrix(matrix * prediction_mask, data_input)
+
+        true_predicted_mask = get_true_predicted_mask(data_input)
+
         return TripletModelOutput(
             batch=data_input.batch,
             triplets=triplets,
             similarities=matrix,
             loss_mask=loss_mask,
-            prediction_mask=prediction_mask
+            true_predicted_mask=true_predicted_mask
         )
 
     def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:
@@ -84,20 +88,27 @@ class TripletExtractorModel(BaseModel):
         return triplets
 
     def get_loss(self, model_out: TripletModelOutput) -> ModelLoss:
+        sim: Tensor = torch.exp(model_out.features)
 
-        return ModelLoss(triplet_extractor_loss=0, config=self.config)
+        numerator: Tensor = sim * model_out.loss_mask
+
+        negatives: Tensor = sim * (~model_out.loss_mask)
+        denominator: Tensor = torch.sum(negatives, dim=TripletDimensions.ASPECT, keepdim=True)
+        denominator = numerator + denominator
+
+        loss: Tensor = numerator / denominator
+        loss = torch.sum(loss, dim=[1, 2]) / torch.sum(model_out.loss_mask, dim=[1, 2])
+        loss = -torch.log(loss)
+        loss = torch.sum(loss) / self.config['general-training']['batch-size']
+
+        return ModelLoss(triplet_extractor_loss=loss, config=self.config)
 
     def update_metrics(self, model_out: TripletModelOutput) -> None:
-        true_labels: torch.Tensor = self.construct_matrix_labels(model_out.batch, tuple(model_out.predicted_spans))
-        true_triplets: torch.Tensor = self.get_triplets_from_matrix(true_labels).to(
-            self.config['general-training']['device'])
-        total_correct_count: int = self.get_total_correct_triplets_count(model_out.batch)
-        predicted_labels: torch.Tensor = torch.argmax(model_out.triplet_results, dim=-1)
-        predicted_labels = torch.where(true_labels == ASTELabels.NOT_RELEVANT, true_labels, predicted_labels)
-        predicted_triplets: torch.Tensor = self.get_triplets_from_matrix(predicted_labels).to(
-            self.config['general-training']['device'])
+        total_correct_count: int = model_out.loss_mask.sum().item()
+        true_number: int = model_out.true_predicted_mask.sum().item()
+        predicted_triplets: int = model_out.number_of_triplets()
 
-        self.final_metrics(predicted_triplets, true_triplets, full_target_count=total_correct_count)
+        self.final_metrics(predicted_triplets, true_number, full_target_count=total_correct_count)
 
     def get_metrics(self) -> ModelMetric:
         metrics: Dict = self.final_metrics.compute()

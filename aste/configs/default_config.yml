@@ -17,9 +17,9 @@ model:
     source: microsoft/deberta-base
   weighted-loss: True
   span-creator:
-    loss-weight: 2.0
+    loss-weight: 1.0
   triplet-extractor:
-    loss-weight: 3.0
+    loss-weight: 1.0
     threshold: 0.1
 encoder:
   transformer:

@@ -62,17 +62,17 @@ class TripletModel(BaseModel):
         )
 
     def get_loss(self, model_out: ModelOutput) -> ModelLoss:
+        s_loss = self.span_creator.get_loss(model_out.span_creator_output) * self.span_creator.trainable
+        t_loss = self.triplets_extractor.get_loss(model_out.triplet_results) * self.triplets_extractor.trainable
         return ModelLoss.from_instances(
-            span_creator_loss=self.span_creator.get_loss(model_out.span_creator_output) * self.span_creator.trainable,
-            triplet_extractor_loss=self.triplets_extractor.get_loss(
-                model_out.triplet_results) * self.triplets_extractor.trainable,
+            span_creator_loss=s_loss,
+            triplet_extractor_loss=t_loss,
             config=self.config
         )
 
     def update_metrics(self, model_out: ModelOutput) -> None:
-        self.span_creator.update_metrics(model_out)
-        self.triplets_extractor.update_metrics(model_out)
-        self.span_selector.update_metrics(model_out)
+        self.span_creator.update_metrics(model_out.span_creator_output)
+        self.triplets_extractor.update_metrics(model_out.triplet_results)
 
     def get_metrics(self) -> ModelMetric:
         return ModelMetric.from_instances(
@@ -83,7 +83,6 @@ class TripletModel(BaseModel):
     def reset_metrics(self) -> None:
         self.span_creator.reset_metrics()
         self.triplets_extractor.reset_metrics()
-        self.span_selector.reset_metrics()
 
     def validation_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> Optional[STEP_OUTPUT]:
         model_out: ModelOutput = self.forward(batch)
@@ -109,30 +108,6 @@ class TripletModel(BaseModel):
             {'params': self.sentiment_extender.parameters(), 'lr': self.config['model']['learning-rate']},
             {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['learning-rate']},
         ]
-
-    @torch.no_grad()
-    def check_spans_coverage(self, data: DataLoader) -> Dict:
-        num_predicted: int = 0
-        num_correct_predicted: int = 0
-        true_num: int = 0
-        for batch in tqdm(data):
-            sample: Batch
-            for sample in batch:
-                model_output: ModelOutput = self(sample)
-                true_spans: Tensor = torch.cat([sample.aspect_spans[0], sample.opinion_spans[0]], dim=0).unique(
-                    dim=0)
-                predicted = model_output.span_creator_output.all_predicted_spans[0]
-                num_correct_predicted += self._count_intersection(true_spans, predicted)
-                num_predicted += predicted.unique(dim=0).shape[0]
-                true_num += true_spans.shape[0] - int(-1 in true_spans)
-        ratio: float = num_correct_predicted / true_num
-        logging.info(
-            f'Coverage of isolated spans: {ratio}. Extracted spans: {num_predicted}. Total correct spans: {true_num}')
-        return {
-            'Ratio': ratio,
-            'Extracted spans': num_predicted,
-            'Total correct spans': true_num
-        }
 
     @staticmethod
     def _count_intersection(true_spans: Tensor, predicted_spans: Tensor) -> int:
