@@ -1,28 +1,26 @@
-import logging
 from typing import List, Dict, Optional
 
 import torch
-from aste.configs import base_config
+from ..configs import base_config
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from torch import Tensor
-from torch.utils.data import DataLoader
-from tqdm import tqdm
 
-from ..base_model import BaseModel
-from .triplet_model_outputs import ModelOutput
-from ..model_elements.embeddings import BaseEmbedding, TransformerWithAggregation
-from ..model_elements.span_aggregators import (
+from ..dataset.reader import Batch
+from .base_model import BaseModel
+from .model_elements.embeddings import BaseEmbedding, TransformerWithAggregation
+from .model_elements.span_aggregators import (
     BaseAggregator,
     EndPointAggregator
 )
-from ..outputs import (
+from .outputs import (
     ModelLoss,
     ModelMetric,
-    BaseModelOutput
+    BaseModelOutput,
+    SpanCreatorOutput,
+    TripletModelOutput,
+    SentimentModelOutput, ModelOutput
 )
-from ..specialty_models import SpanCreatorModel, TripletExtractorModel, EmbeddingsExtenderModel
-from ..specialty_models import SpanCreatorOutput, TripletModelOutput, SentimentModelOutput
-from ...dataset.reader import Batch
+from .specialty_models import SpanCreatorModel, TripletExtractorModel, EmbeddingsExtenderModel
 
 
 class TripletModel(BaseModel):
@@ -37,7 +35,6 @@ class TripletModel(BaseModel):
         self.triplets_extractor: BaseModel = TripletExtractorModel(input_dim=self.aggregator.output_dim, config=config)
 
     def forward(self, batch: Batch) -> ModelOutput:
-
         emb_output: BaseModelOutput = self.emb_layer(batch)
         span_creator_output: SpanCreatorOutput = self.span_creator(emb_output)
 
@@ -51,7 +48,7 @@ class TripletModel(BaseModel):
         )
 
         extended_opinions: SentimentModelOutput = self.sentiment_extender(span_creator_output.opinions_agg_emb)
-        span_creator_output = span_creator_output.extend_opinion_embeddings(extended_opinions)
+        span_creator_output = span_creator_output.extend_opinions_with_sentiments(extended_opinions)
 
         triplet_output: TripletModelOutput = self.triplets_extractor(span_creator_output)
 

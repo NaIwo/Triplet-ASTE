@@ -1,5 +1,5 @@
 general-training:
-  device: cuda # {cpu vs gpu}
+  device: cpu # {cpu vs gpu}
   batch-size: 1
   precision: 32
   include-sub-words-info-in-mask: False

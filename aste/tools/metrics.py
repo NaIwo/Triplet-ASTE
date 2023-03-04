@@ -15,8 +15,8 @@ class Metric(MetricCollection):
         super().__init__(*args, **kwargs)
 
     @ignore_index
-    def forward(self, preds, target, *args, **kwargs):
-        super(Metric, self).forward(preds, target, *args, **kwargs)
+    def forward(self, *args, **kwargs):
+        super(Metric, self).forward(*args, **kwargs)
 
     def compute(self):
         computed: Dict = super(Metric, self).compute()
@@ -29,14 +29,14 @@ class SpanMetric(TorchMetric):
     def __init__(self, dist_sync_on_step: bool = False):
         TorchMetric.__init__(self, dist_sync_on_step=dist_sync_on_step)
 
-        self.add_state("correct", default=torch.tensor(0), dist_reduce_fx="sum")
-        self.add_state("total_predicted", default=torch.tensor(0), dist_reduce_fx="sum")
-        self.add_state("total_target", default=torch.tensor(0), dist_reduce_fx="sum")
+        self.add_state("tp", default=torch.tensor(0), dist_reduce_fx="sum")
+        self.add_state("tp_fp", default=torch.tensor(0), dist_reduce_fx="sum")
+        self.add_state("tp_fn", default=torch.tensor(0), dist_reduce_fx="sum")
 
-    def update(self, preds: int, target_in_stage: int, full_target_count: Optional[int] = None) -> None:
-        self.correct += target_in_stage
-        self.total_predicted += preds
-        self.total_target += full_target_count
+    def update(self, tp: int, tp_fp: int, tp_fn: Optional[int] = None) -> None:
+        self.tp += tp
+        self.tp_fp += tp_fp
+        self.tp_fn += tp_fn
 
     def compute(self) -> float:
         raise NotImplemented
@@ -51,7 +51,7 @@ class SpanPrecision(SpanMetric):
         super().__init__(dist_sync_on_step=dist_sync_on_step)
 
     def compute(self) -> float:
-        return self.safe_div(self.correct, self.total_predicted)
+        return self.safe_div(self.tp, self.tp_fp)
 
 
 class SpanRecall(SpanMetric):
@@ -59,7 +59,7 @@ class SpanRecall(SpanMetric):
         super().__init__(dist_sync_on_step=dist_sync_on_step)
 
     def compute(self) -> float:
-        return self.safe_div(self.correct, self.total_target)
+        return self.safe_div(self.tp, self.tp_fn)
 
 
 class SpanF1(SpanMetric):
@@ -67,8 +67,8 @@ class SpanF1(SpanMetric):
         super().__init__(dist_sync_on_step=dist_sync_on_step)
 
     def compute(self) -> float:
-        precision: float = self.safe_div(self.correct, self.total_predicted)
-        recall: float = self.safe_div(self.correct, self.total_target)
+        precision: float = self.safe_div(self.tp, self.tp_fp)
+        recall: float = self.safe_div(self.tp, self.tp_fn)
 
         return self.safe_div(2 * (precision * recall), (precision + recall))
 

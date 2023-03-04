@@ -6,8 +6,14 @@ from torch import Tensor
 
 
 def ignore_index(func):
-    def ignore_and_call(self, preds: Tensor, target: Tensor, *args, **kwargs):
+    def ignore_and_call(self, *args, **kwargs):
         if self.ignore_index is not None:
+            if 'preds' in kwargs.keys():
+                preds = kwargs['preds']
+                target = kwargs['target']
+            else:
+                preds = args[0]
+                target = args[1]
             indices = (target != self.ignore_index).nonzero(as_tuple=False).flatten()
             preds_ignored = preds[indices]
             target_ignored = target[indices]
@@ -15,7 +21,7 @@ def ignore_index(func):
                 kwargs['mask'] = kwargs['mask'][indices]
             res = func(self, preds_ignored, target_ignored, *args, **kwargs)
         else:
-            res = func(self, preds, target, *args, **kwargs)
+            res = func(self, *args, **kwargs)
         return res
 
     return ignore_and_call

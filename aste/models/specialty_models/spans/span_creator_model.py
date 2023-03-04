@@ -3,9 +3,9 @@ from typing import List, Optional, Dict
 import torch
 from torch import Tensor
 
-from .span_outputs import SpanInformationOutput, SpanPredictionsOutput, SpanCreatorOutput
 from .spans_manager import SpanInformationManager
-from ..const import CreatedSpanCodes
+from ...outputs.outputs import SpanInformationOutput, SpanPredictionsOutput, SpanCreatorOutput
+from ...utils.const import CreatedSpanCodes
 from ....dataset.domain import SpanCode
 from ....dataset.reader import Batch
 from ....models import BaseModel
@@ -141,18 +141,19 @@ class SpanCreatorModel(BaseModel):
         )
 
     def update_metrics(self, model_out: SpanCreatorOutput) -> None:
-        pred = model_out.predicted_spans
-        idx: int
         b: Batch = model_out.batch
-        for idx, (aspect, opinion) in enumerate(zip(b.aspect_spans, b.opinion_spans)):
-            pred_num = (pred.aspects[idx].span_creation_info == CreatedSpanCodes.PREDICTED_TRUE).sum().item()
-            pred_num += (pred.aspects[idx].span_creation_info == CreatedSpanCodes.PREDICTED_FALSE).sum().item()
-            pred_num += (pred.opinions[idx].span_creation_info == CreatedSpanCodes.PREDICTED_TRUE).sum().item()
-            pred_num += (pred.opinions[idx].span_creation_info == CreatedSpanCodes.PREDICTED_FALSE).sum().item()
+        pred: SpanPredictionsOutput
+        for pred, aspect, opinion in zip(model_out.predicted_spans, b.aspect_spans, b.opinion_spans):
+            tp = pred.aspects[0].get_number_of_predicted_true_elements()
+            tp += pred.opinions[0].get_number_of_predicted_true_elements()
+
+            tp_fp = pred.aspects[0].get_number_of_predicted_elements(with_repeated=False)
+            tp_fp += pred.opinions[0].get_number_of_predicted_elements(with_repeated=False)
 
             true: Tensor = torch.cat([aspect, opinion], dim=0).unique(dim=0)
-            true_count: int = true.shape[0] - int(-1 in true)
-            self.metrics(pred_num, true_count, true_count)
+            tp_fn: int = true.shape[0] - int(-1 in true)
+
+            self.metrics(tp=tp, tp_fp=tp_fp, tp_fn=tp_fn)
 
     def get_metrics(self) -> ModelMetric:
         return ModelMetric(

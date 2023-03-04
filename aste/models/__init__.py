@@ -1,3 +1,2 @@
-from .outputs import ModelLoss, ModelMetric, BaseModelOutput
 from .base_model import BaseModel
-from .full_models import TripletModel, ModelOutput
+from .triplet_model import TripletModel

@@ -5,14 +5,16 @@ from typing import List, Dict, Union, Optional, Any
 import pytorch_lightning as pl
 import torch
 import yaml
-from aste.configs import base_config
-from aste.dataset.domain import Sentence
+from ..configs import base_config
+from ..dataset.domain import Sentence
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from torch import Tensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .outputs import ModelLoss, ModelMetric, BaseModelOutput
+from .outputs.outputs import BaseModelOutput
+from .outputs.losses import ModelLoss
+from .outputs.metrics import ModelMetric
 from ..dataset.reader import Batch
 
 

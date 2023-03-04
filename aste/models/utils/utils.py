@@ -2,7 +2,7 @@ from typing import List
 
 from torch import Tensor
 
-from ASTE.aste.dataset.domain import Sentence, Span
+from ...dataset.domain import Sentence, Span
 
 
 def construct_predicted_spans(span_range: Tensor, sentence: Sentence) -> List[Span]:

@@ -2,10 +2,10 @@ from typing import Dict, List
 
 import torch
 
-from ....models import BaseModel
-from .sentiment_outputs import SentimentModelOutput
-from ....dataset.domain.const import ASTELabels
+from ....models.base_model import BaseModel
 from ..utils import sequential_blocks
+from ...outputs import SentimentModelOutput
+from ....dataset.domain.const import ASTELabels
 
 
 class EmbeddingsExtenderModel(BaseModel):
@@ -19,14 +19,13 @@ class EmbeddingsExtenderModel(BaseModel):
             input_dim // 2,
             input_dim
         ]
-        self.models = [
-            sequential_blocks(neurons, self.config) for _ in range(len(self.config['dataset']['polarities']))
-        ]
+        self.models = {
+            p: sequential_blocks(neurons, self.config) for p in self.config['dataset']['polarities']
+        }
 
     def forward(self, data: torch.Tensor) -> SentimentModelOutput:
         data = self.common_model(data)
         return SentimentModelOutput(sentiment_features={
-            el.value: self.models[idx](data)
-            for idx, el in enumerate(ASTELabels)
-            if el.name in self.config['dataset']['polarities']
+            ASTELabels[p]: self.models[p](data)
+            for p in self.config['dataset']['polarities']
         })

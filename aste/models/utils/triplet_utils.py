@@ -3,12 +3,8 @@ from typing import Tuple, Optional, List
 import torch
 from torch import Tensor
 
-from ..const import CreatedSpanCodes, TripletDimensions
-from ..spans.span_outputs import (
-    SpanInformationOutput,
-    SpanPredictionsOutput,
-    SpanCreatorOutput
-)
+from .const import CreatedSpanCodes, TripletDimensions
+from ..outputs import SpanInformationOutput, SpanPredictionsOutput, SpanCreatorOutput
 
 
 def create_embeddings_matrix_by_concat(data: SpanCreatorOutput) -> Tensor:

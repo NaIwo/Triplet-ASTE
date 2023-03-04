@@ -4,18 +4,23 @@ import torch
 from torch import Tensor
 from torch.nn import Sequential
 
-from .triplet_outputs import SampleTripletOutput, TripletModelOutput
-from .triplet_utils import (
+from ...utils.triplet_utils import (
     create_embeddings_matrix_by_concat,
     create_mask_matrix_for_loss,
     create_mask_matrix_for_prediction,
     create_embedding_mask_matrix,
     get_true_predicted_mask
 )
-from ..const import TripletDimensions
-from ..spans.span_outputs import SpanInformationOutput, SpanPredictionsOutput, SpanCreatorOutput
+from ...utils.const import TripletDimensions
 from ..utils import sequential_blocks
-from ...full_models.triplet_model import BaseModel
+from ...base_model import BaseModel
+from ...outputs import (
+    SpanInformationOutput,
+    SpanPredictionsOutput,
+    SpanCreatorOutput,
+    SampleTripletOutput,
+    TripletModelOutput
+)
 from ....models.outputs import (
     ModelLoss,
     ModelMetric
@@ -62,8 +67,6 @@ class TripletExtractorModel(BaseModel):
         return matrix.squeeze(-1) * mask
 
     def get_triplets_from_matrix(self, matrix: Tensor, data_input: SpanCreatorOutput) -> List[SampleTripletOutput]:
-        thr: float = self.config['model']['triplet-extractor']['threshold']
-
         triplets: List = list()
 
         ps: SpanPredictionsOutput = data_input.predicted_spans
@@ -72,7 +75,7 @@ class TripletExtractorModel(BaseModel):
         sample_aspects: SpanInformationOutput
         sample_opinions: SpanInformationOutput
         for sample, sample_aspects, sample_opinions in zip(matrix, ps.aspects, ps.opinions):
-            significant: Tensor = (sample >= thr).nonzero()
+            significant: Tensor = self.threshold_data(sample).nonzero()
             a_ranges: Tensor = sample_aspects.span_range[significant[:, 0]]
             o_ranges: Tensor = sample_opinions.span_range[significant[:, 1]]
             sentiments: Tensor = sample_opinions.sentiments[significant[:, 1]]
@@ -100,15 +103,21 @@ class TripletExtractorModel(BaseModel):
         loss = torch.sum(loss, dim=[1, 2]) / torch.sum(model_out.loss_mask, dim=[1, 2])
         loss = -torch.log(loss)
         loss = torch.sum(loss) / self.config['general-training']['batch-size']
-
+        if torch.isnan(loss):
+            a = loss
         return ModelLoss(triplet_extractor_loss=loss, config=self.config)
 
     def update_metrics(self, model_out: TripletModelOutput) -> None:
-        total_correct_count: int = model_out.loss_mask.sum().item()
-        true_number: int = model_out.true_predicted_mask.sum().item()
-        predicted_triplets: int = model_out.number_of_triplets()
+        tp_fn: int = model_out.loss_mask.sum().item()
+        tp_fp: int = model_out.number_of_triplets()
 
-        self.final_metrics(predicted_triplets, true_number, full_target_count=total_correct_count)
+        triplets: Tensor = self.threshold_data(model_out.features)
+        tp: int = (triplets & model_out.true_predicted_mask).sum().item()
+
+        self.final_metrics(tp=tp, tp_fp=tp_fp, tp_fn=tp_fn)
+
+    def threshold_data(self, data: Tensor) -> Tensor:
+        return data >= self.config['model']['triplet-extractor']['threshold']
 
     def get_metrics(self) -> ModelMetric:
         metrics: Dict = self.final_metrics.compute()
