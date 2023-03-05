@@ -5,22 +5,25 @@ from typing import List, Dict, Union, Optional, Any
 import pytorch_lightning as pl
 import torch
 import yaml
-from ..configs import base_config
-from ..dataset.domain import Sentence
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from torch import Tensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .outputs.outputs import BaseModelOutput
 from .outputs.losses import ModelLoss
 from .outputs.metrics import ModelMetric
+from .outputs.outputs import BaseModelOutput
+from ..configs import base_config
+from ..dataset.domain import Sentence
 from ..dataset.reader import Batch
 
 
 class BaseModel(pl.LightningModule):
-    def __init__(self, model_name: str, config: Dict = base_config, *args, **kwargs):
+    def __init__(self, model_name: str, config: Optional[Dict] = None, *args, **kwargs):
         super().__init__()
+        if config is None:
+            config: Dict = base_config
+
         self.model_name = model_name
         self.config: Dict = config
         self.performed_epochs: int = 0
@@ -33,8 +36,8 @@ class BaseModel(pl.LightningModule):
     def training_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> STEP_OUTPUT:
         model_out: BaseModelOutput = self.forward(batch)
         loss: ModelLoss = self.get_loss(model_out)
-        self.log("train_loss", loss.full_loss, on_epoch=True, prog_bar=True, logger=True, sync_dist=True,
-                 batch_size=self.config['general-training']['batch-size'])
+
+        self.log_loss(loss, prefix='train', on_epoch=True, on_step=False)
         return loss.full_loss
 
     def validation_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> Optional[STEP_OUTPUT]:
@@ -42,28 +45,33 @@ class BaseModel(pl.LightningModule):
         self.update_metrics(model_out)
         loss: ModelLoss = self.get_loss(model_out)
 
-        self.log("val_loss", loss.full_loss, on_epoch=True, prog_bar=True, logger=True, sync_dist=True,
-                 batch_size=self.config['general-training']['batch-size'])
+        self.log_loss(loss, prefix='val', on_epoch=True, on_step=False)
         return loss.full_loss
 
     def validation_epoch_end(self, *args, **kwargs) -> None:
         metrics: ModelMetric = self.get_metrics_and_reset()
-        if self.logger is not None:
-            self.logger.log_metrics(metrics.metrics(prefix='val'))
+        self.log_metrics(metrics, prefix='val')
 
     def test_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> Optional[STEP_OUTPUT]:
         model_out: BaseModelOutput = self.forward(batch)
         self.update_metrics(model_out)
         loss: ModelLoss = self.get_loss(model_out)
 
-        self.log("test_loss", loss.full_loss, on_epoch=True, prog_bar=True, logger=True, sync_dist=True,
-                 batch_size=self.config['general-training']['batch-size'])
+        self.log_loss(loss=loss, prefix='test', on_epoch=True, on_step=False)
         return loss.full_loss
 
     def test_epoch_end(self, *args, **kwargs) -> None:
         metrics: ModelMetric = self.get_metrics_and_reset()
-        if self.logger is not None:
-            self.logger.log_metrics(metrics.metrics(prefix='test'))
+        self.log_metrics(metrics, prefix='test')
+
+    def log_loss(self, loss: ModelLoss, prefix: str = 'train', on_epoch: bool = True, on_step: bool = False) -> None:
+        self.log(f"{prefix}_loss", loss.full_loss, on_epoch=on_epoch, prog_bar=True, on_step=on_step,
+                 logger=True, sync_dist=True, batch_size=self.config['general-training']['batch-size'])
+
+    def log_metrics(self, metrics: ModelMetric, prefix: str = 'train') -> None:
+        for metric_name, metric_values in metrics.metrics(prefix=prefix).items():
+            self.log(metric_name, metric_values, on_epoch=True, prog_bar=False,
+                     logger=True, sync_dist=True, batch_size=self.config['general-training']['batch-size'])
 
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
         return super(BaseModel, self).predict_step(batch, batch_idx, dataloader_idx)

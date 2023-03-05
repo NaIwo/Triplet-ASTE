@@ -23,8 +23,16 @@ class ModelLoss:
         self.triplet_extractor_loss: Tensor = triplet_extractor_loss if triplet_extractor_loss is not None else ZERO
         self.config: Dict = config
 
+        self.raise_if_nan()
+
         if self.config['model']['weighted-loss']:
             self._include_weights()
+
+    def raise_if_nan(self) -> None:
+        if torch.isnan(self.span_creator_loss):
+            raise ValueError(f"Span creator loss is NaN: {self.span_creator_loss}")
+        if torch.isnan(self.triplet_extractor_loss):
+            raise ValueError(f"Triplet extractor loss is NaN: {self.triplet_extractor_loss}")
 
     @classmethod
     def from_instances(

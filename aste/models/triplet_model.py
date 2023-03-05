@@ -1,11 +1,9 @@
 from typing import List, Dict, Optional
 
 import torch
-from ..configs import base_config
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from torch import Tensor
 
-from ..dataset.reader import Batch
 from .base_model import BaseModel
 from .model_elements.embeddings import BaseEmbedding, TransformerWithAggregation
 from .model_elements.span_aggregators import (
@@ -21,10 +19,11 @@ from .outputs import (
     SentimentModelOutput, ModelOutput
 )
 from .specialty_models import SpanCreatorModel, TripletExtractorModel, EmbeddingsExtenderModel
+from ..dataset.reader import Batch
 
 
 class TripletModel(BaseModel):
-    def __init__(self, model_name='Transformer Based Model', config: Dict = base_config, *args, **kwargs):
+    def __init__(self, model_name='Transformer Based Model', config: Optional[Dict] = None, *args, **kwargs):
         super(TripletModel, self).__init__(model_name, config=config)
 
         self.emb_layer: BaseEmbedding = TransformerWithAggregation(config=config)
@@ -40,11 +39,11 @@ class TripletModel(BaseModel):
 
         span_creator_output.aspects_agg_emb = self.aggregator.aggregate(
             emb_output.features,
-            span_creator_output.predicted_spans.get_aspect_span_predictions()
+            span_creator_output.get_aspect_span_predictions()
         )
         span_creator_output.opinions_agg_emb = self.aggregator.aggregate(
             emb_output.features,
-            span_creator_output.predicted_spans.get_opinion_span_predictions()
+            span_creator_output.get_opinion_span_predictions()
         )
 
         extended_opinions: SentimentModelOutput = self.sentiment_extender(span_creator_output.opinions_agg_emb)
@@ -86,13 +85,25 @@ class TripletModel(BaseModel):
         self.update_metrics(model_out)
         loss: ModelLoss = self.get_loss(model_out)
 
-        self.log("val_loss", loss.full_loss, on_epoch=True, prog_bar=True, logger=True, sync_dist=True,
-                 batch_size=self.config['general-training']['batch-size'])
-        self.log("val_loss_span_creator_loss", loss.span_creator_loss, on_epoch=True, prog_bar=False, logger=True,
-                 sync_dist=True, batch_size=self.config['general-training']['batch-size'])
-        self.log("val_loss_triplet_extractor_loss", loss.triplet_extractor_loss, on_epoch=True, prog_bar=False,
-                 logger=True, sync_dist=True, batch_size=self.config['general-training']['batch-size'])
+        mt = model_out.triplet_results
+        similarity = float((mt.features * mt.loss_mask).sum() / mt.loss_mask.sum())
+
+        self.log('val_similarity', similarity, on_epoch=True, on_step=True, prog_bar=False,
+                 batch_size=self.config['general-training']['batch-size'], logger=True, sync_dist=True)
+
+        self.log_loss(loss, prefix='val', on_epoch=True, on_step=False)
+
         return loss.full_loss
+
+    def log_loss(self, loss: ModelLoss, prefix: str = 'train', on_epoch: bool = True, on_step: bool = False) -> None:
+        self.log(f"{prefix}_loss", loss.full_loss, on_epoch=on_epoch, prog_bar=True, on_step=on_step,
+                 logger=True, sync_dist=True, batch_size=self.config['general-training']['batch-size'])
+        self.log(f"{prefix}_loss_span_creator_loss", loss.span_creator_loss, on_epoch=on_epoch, on_step=on_step,
+                 prog_bar=True, logger=True, sync_dist=True, batch_size=self.config['general-training']['batch-size'])
+        self.log(f"{prefix}_loss_triplet_extractor_loss", loss.triplet_extractor_loss, on_epoch=on_epoch,
+                 on_step=on_step, prog_bar=True, logger=True, sync_dist=True,
+                 batch_size=self.config['general-training']['batch-size']
+                 )
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.get_params_and_lr(), lr=1e-5)

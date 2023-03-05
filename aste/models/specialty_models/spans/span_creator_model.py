@@ -1,10 +1,10 @@
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 
 import torch
 from torch import Tensor
 
 from .spans_manager import SpanInformationManager
-from ...outputs.outputs import SpanInformationOutput, SpanPredictionsOutput, SpanCreatorOutput
+from ...outputs.outputs import SpanInformationOutput, SpanCreatorOutput
 from ...utils.const import CreatedSpanCodes
 from ....dataset.domain import SpanCode
 from ....dataset.reader import Batch
@@ -45,18 +45,19 @@ class SpanCreatorModel(BaseModel):
 
     def forward(self, data_input: BaseModelOutput) -> SpanCreatorOutput:
         features: Tensor = self.get_features(data_input.features)
-        predicted_spans: SpanPredictionsOutput = self.get_spans(features, data_input.batch)
+        aspects, opinions = self.get_spans(features, data_input.batch)
         return SpanCreatorOutput(
             batch=data_input.batch,
             features=features,
-            predicted_spans=predicted_spans
+            aspects=aspects,
+            opinions=opinions,
         )
 
     def get_features(self, data: Tensor) -> Tensor:
         out = self.linear_layer(data)
         return self.final_layer(out)
 
-    def get_spans(self, data: Tensor, batch: Batch) -> SpanPredictionsOutput:
+    def get_spans(self, data: Tensor, batch: Batch) -> Tuple[List[SpanInformationOutput], List[SpanInformationOutput]]:
         aspect_results: List[SpanInformationOutput] = list()
         opinion_results: List[SpanInformationOutput] = list()
         best_paths: List[List[int]] = self.crf.decode(data, mask=batch.emb_mask[:, :data.shape[1], ...])
@@ -73,10 +74,7 @@ class SpanCreatorModel(BaseModel):
                 self.get_spans_information_from_sequence(best_path, sample, 'OPINION')
             )
 
-        return SpanPredictionsOutput(
-            aspects=aspect_results,
-            opinions=opinion_results
-        )
+        return aspect_results, opinion_results
 
     def get_spans_information_from_sequence(self, seq: Tensor, sample: Batch, source: str) -> SpanInformationOutput:
         seq = self._replace_not_split(seq, source)
@@ -142,8 +140,8 @@ class SpanCreatorModel(BaseModel):
 
     def update_metrics(self, model_out: SpanCreatorOutput) -> None:
         b: Batch = model_out.batch
-        pred: SpanPredictionsOutput
-        for pred, aspect, opinion in zip(model_out.predicted_spans, b.aspect_spans, b.opinion_spans):
+        pred: SpanCreatorOutput
+        for pred, aspect, opinion in zip(model_out, b.aspect_spans, b.opinion_spans):
             tp = pred.aspects[0].get_number_of_predicted_true_elements()
             tp += pred.opinions[0].get_number_of_predicted_true_elements()
 

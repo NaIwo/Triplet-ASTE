@@ -16,7 +16,6 @@ from ..utils import sequential_blocks
 from ...base_model import BaseModel
 from ...outputs import (
     SpanInformationOutput,
-    SpanPredictionsOutput,
     SpanCreatorOutput,
     SampleTripletOutput,
     TripletModelOutput
@@ -69,12 +68,10 @@ class TripletExtractorModel(BaseModel):
     def get_triplets_from_matrix(self, matrix: Tensor, data_input: SpanCreatorOutput) -> List[SampleTripletOutput]:
         triplets: List = list()
 
-        ps: SpanPredictionsOutput = data_input.predicted_spans
-
         sample: Tensor
         sample_aspects: SpanInformationOutput
         sample_opinions: SpanInformationOutput
-        for sample, sample_aspects, sample_opinions in zip(matrix, ps.aspects, ps.opinions):
+        for sample, sample_aspects, sample_opinions in zip(matrix, data_input.aspects, data_input.opinions):
             significant: Tensor = self.threshold_data(sample).nonzero()
             a_ranges: Tensor = sample_aspects.span_range[significant[:, 0]]
             o_ranges: Tensor = sample_opinions.span_range[significant[:, 1]]
@@ -103,8 +100,6 @@ class TripletExtractorModel(BaseModel):
         loss = torch.sum(loss, dim=[1, 2]) / torch.sum(model_out.loss_mask, dim=[1, 2])
         loss = -torch.log(loss)
         loss = torch.sum(loss) / self.config['general-training']['batch-size']
-        if torch.isnan(loss):
-            a = loss
         return ModelLoss(triplet_extractor_loss=loss, config=self.config)
 
     def update_metrics(self, model_out: TripletModelOutput) -> None:

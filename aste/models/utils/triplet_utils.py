@@ -4,7 +4,7 @@ import torch
 from torch import Tensor
 
 from .const import CreatedSpanCodes, TripletDimensions
-from ..outputs import SpanInformationOutput, SpanPredictionsOutput, SpanCreatorOutput
+from ..outputs import SpanInformationOutput, SpanCreatorOutput
 
 
 def create_embeddings_matrix_by_concat(data: SpanCreatorOutput) -> Tensor:
@@ -13,44 +13,46 @@ def create_embeddings_matrix_by_concat(data: SpanCreatorOutput) -> Tensor:
 
 
 def create_embedding_mask_matrix(data: SpanCreatorOutput) -> Tensor:
-    relevant_elements: Tensor = _create_bool_mask(data, diff_from=CreatedSpanCodes.NOT_RELEVANT)
+    diff_from = torch.tensor([CreatedSpanCodes.NOT_RELEVANT]).to(data.aspects_agg_emb)
+    relevant_elements: Tensor = _create_bool_mask(data, diff_from=diff_from)
 
     return relevant_elements
 
 
 def get_true_predicted_mask(data: SpanCreatorOutput) -> Tensor:
-    true_elements = _create_bool_mask(data, equals_to=CreatedSpanCodes.PREDICTED_TRUE)
+    equals_to = torch.tensor([CreatedSpanCodes.PREDICTED_TRUE]).to(data.aspects_agg_emb)
+    true_elements = _create_bool_mask(data, equals_to=equals_to)
 
     return true_elements
 
 
 def create_mask_matrix_for_loss(data: SpanCreatorOutput) -> Tensor:
-    true_elements: Tensor = _create_bool_mask(data, equals_to=CreatedSpanCodes.ADDED_TRUE)
-    true_elements |= _create_bool_mask(data, equals_to=CreatedSpanCodes.PREDICTED_TRUE)
+    equals_to = torch.tensor([CreatedSpanCodes.ADDED_TRUE, CreatedSpanCodes.PREDICTED_TRUE]).to(data.aspects_agg_emb)
+    true_elements: Tensor = _create_bool_mask(data, equals_to=equals_to)
 
     return _create_final_mask(data, true_elements)
 
 
 def create_mask_matrix_for_prediction(data: SpanCreatorOutput) -> Tensor:
-    predicted_elements: Tensor = _create_bool_mask(data, equals_to=CreatedSpanCodes.PREDICTED_TRUE)
-    predicted_elements |= _create_bool_mask(data, equals_to=CreatedSpanCodes.PREDICTED_FALSE)
+    equals_to = torch.tensor([CreatedSpanCodes.PREDICTED_FALSE, CreatedSpanCodes.PREDICTED_TRUE])
+    predicted_elements: Tensor = _create_bool_mask(data, equals_to=equals_to.to(data.aspects_agg_emb))
 
     return predicted_elements
 
 
-def _create_bool_mask(data: SpanCreatorOutput, *, diff_from: Optional[int] = None,
-                      equals_to: Optional[int] = None) -> Tensor:
+def _create_bool_mask(data: SpanCreatorOutput, *, diff_from: Optional[Tensor] = None,
+                      equals_to: Optional[Tensor] = None) -> Tensor:
     aspects, opinions = _expand_aspect_and_opinion(
-        data.predicted_spans.get_aspect_span_creation_info(),
-        data.predicted_spans.get_opinion_span_creation_info()
+        data.get_aspect_span_creation_info(),
+        data.get_opinion_span_creation_info()
     )
 
     if (diff_from is not None) and (equals_to is None):
-        aspects = aspects != diff_from
-        opinions = opinions != diff_from
+        aspects = ~torch.isin(aspects, diff_from)
+        opinions = ~torch.isin(opinions, diff_from)
     elif (equals_to is not None) and (diff_from is None):
-        aspects = aspects == equals_to
-        opinions = opinions == equals_to
+        aspects = torch.isin(aspects, equals_to)
+        opinions = torch.isin(opinions, equals_to)
     else:
         raise ValueError('Exactly one of diff_from or equals_to must be specified')
 
@@ -74,10 +76,9 @@ def _expand_aspect_and_opinion(aspect: Tensor, opinion: Tensor) -> Tuple[Tensor,
 
 
 def _create_final_mask(data: SpanCreatorOutput, final_mask: Tensor) -> Tensor:
-    ps: SpanPredictionsOutput = data.predicted_spans
     sample_aspects: SpanInformationOutput
     sample_opinions: SpanInformationOutput
-    for sample_aspects, sample_opinions, mask in zip(ps.aspects, ps.opinions, final_mask):
+    for sample_aspects, sample_opinions, mask in zip(data.aspects, data.opinions, final_mask):
         temp_mask: Tensor = torch.zeros_like(mask).bool()
 
         a_idx: Tensor = sample_aspects.mapping_indexes

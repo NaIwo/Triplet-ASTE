@@ -207,6 +207,12 @@ class Batch:
         self.num += 1
         if self.num >= len(self.sentence_obj):
             raise StopIteration
+        return self.__getitem__(self.num)
+
+    def __len__(self) -> int:
+        return len(self.sentence_obj)
+
+    def __getitem__(self, item: int):
         return Batch(
             sentence_obj=[self.sentence_obj[self.num]],
             sentence=self.sentence[self.num].unsqueeze(0),
@@ -218,6 +224,3 @@ class Batch:
             mask=self.mask[self.num].unsqueeze(0),
             emb_mask=self.emb_mask[self.num].unsqueeze(0)
         )
-
-    def __len__(self) -> int:
-        return len(self.sentence_obj)
