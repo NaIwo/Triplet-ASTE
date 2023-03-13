@@ -2,17 +2,8 @@ from typing import Dict, List
 
 import torch
 from torch import Tensor
-from torch.nn import Sequential
+from torchmetrics import MetricCollection
 
-from ...utils.triplet_utils import (
-    create_embeddings_matrix_by_concat,
-    create_mask_matrix_for_loss,
-    create_mask_matrix_for_prediction,
-    create_embedding_mask_matrix,
-    get_true_predicted_mask
-)
-from ...utils.const import TripletDimensions
-from ..utils import sequential_blocks
 from ...base_model import BaseModel
 from ...outputs import (
     SpanInformationOutput,
@@ -20,26 +11,26 @@ from ...outputs import (
     SampleTripletOutput,
     TripletModelOutput
 )
+from ...utils.const import TripletDimensions
+from ...utils.triplet_utils import (
+    create_mask_matrix_for_loss,
+    create_mask_matrix_for_prediction,
+    get_true_predicted_mask
+)
 from ....models.outputs import (
     ModelLoss,
     ModelMetric
 )
-from ....tools.metrics import Metric, get_selected_metrics
+from ....tools.metrics import get_selected_metrics
 
 
-class TripletExtractorModel(BaseModel):
-    def __init__(self, input_dim: int, config: Dict, model_name: str = 'Triplet Extractor Model'):
-        super(TripletExtractorModel, self).__init__(model_name=model_name, config=config)
+class BaseTripletExtractorModel(BaseModel):
+    def __init__(self, config: Dict, model_name: str = 'Base Triplet Extractor Model', *args, **kwargs):
+        super(BaseTripletExtractorModel, self).__init__(model_name=model_name, config=config)
 
-        metrics = get_selected_metrics(for_spans=True)
-        self.final_metrics: Metric = Metric(name='Final predictions', metrics=metrics).to(
+        metrics = get_selected_metrics(for_spans=True, dist_sync_on_step=True)
+        self.final_metrics: MetricCollection = MetricCollection(metrics=metrics).to(
             self.config['general-training']['device'])
-
-        input_dimension: int = input_dim * 2
-
-        neurons: List = [input_dimension, input_dimension // 2, input_dimension // 4, input_dimension // 8, 1]
-        self.similarity: Sequential = sequential_blocks(neurons, self.config)
-        self.similarity.append(torch.nn.Sigmoid())
 
     def forward(self, data_input: SpanCreatorOutput) -> TripletModelOutput:
         matrix: Tensor = self._forward_embeddings(data_input)
@@ -60,10 +51,7 @@ class TripletExtractorModel(BaseModel):
         )
 
     def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:
-        matrix: Tensor = create_embeddings_matrix_by_concat(data_input)
-        mask: Tensor = create_embedding_mask_matrix(data_input)
-        matrix = self.similarity(matrix)
-        return matrix.squeeze(-1) * mask
+        raise NotImplementedError
 
     def get_triplets_from_matrix(self, matrix: Tensor, data_input: SpanCreatorOutput) -> List[SampleTripletOutput]:
         triplets: List = list()
@@ -109,7 +97,7 @@ class TripletExtractorModel(BaseModel):
         triplets: Tensor = self.threshold_data(model_out.features)
         tp: int = (triplets & model_out.true_predicted_mask).sum().item()
 
-        self.final_metrics(tp=tp, tp_fp=tp_fp, tp_fn=tp_fn)
+        self.final_metrics.update(tp=tp, tp_fp=tp_fp, tp_fn=tp_fn)
 
     def threshold_data(self, data: Tensor) -> Tensor:
         return data >= self.config['model']['triplet-extractor']['threshold']

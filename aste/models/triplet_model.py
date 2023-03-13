@@ -18,7 +18,12 @@ from .outputs import (
     TripletModelOutput,
     SentimentModelOutput, ModelOutput
 )
-from .specialty_models import SpanCreatorModel, TripletExtractorModel, EmbeddingsExtenderModel
+from .specialty_models import (
+    SpanCreatorModel,
+    EmbeddingsExtenderModel,
+    NeuralTripletExtractorModel,
+    MetricTripletExtractorModel
+)
 from ..dataset.reader import Batch
 
 
@@ -27,11 +32,13 @@ class TripletModel(BaseModel):
         super(TripletModel, self).__init__(model_name, config=config)
 
         self.emb_layer: BaseEmbedding = TransformerWithAggregation(config=config)
-        self.span_creator: BaseModel = SpanCreatorModel(input_dim=self.emb_layer.embedding_dim, config=config)
+        self.span_creator: BaseModel = SpanCreatorModel(input_dim=self.emb_layer.embedding_dim, config=config)#, extend_ranges=[-1, 1])
         self.aggregator: BaseAggregator = EndPointAggregator(input_dim=self.emb_layer.embedding_dim, config=config)
         self.sentiment_extender: BaseModel = EmbeddingsExtenderModel(input_dim=self.aggregator.output_dim,
                                                                      config=config)
-        self.triplets_extractor: BaseModel = TripletExtractorModel(input_dim=self.aggregator.output_dim, config=config)
+        self.triplets_extractor: BaseModel = MetricTripletExtractorModel(
+            config=config, input_dim=self.aggregator.output_dim
+        )
 
     def forward(self, batch: Batch) -> ModelOutput:
         emb_output: BaseModelOutput = self.emb_layer(batch)
@@ -87,13 +94,16 @@ class TripletModel(BaseModel):
 
         mt = model_out.triplet_results
         similarity = float((mt.features * mt.loss_mask).sum() / mt.loss_mask.sum())
+        non_similarity = float((mt.features * (~mt.loss_mask)).sum() / (~mt.loss_mask).sum())
 
         self.log('val_similarity', similarity, on_epoch=True, on_step=True, prog_bar=False,
+                 batch_size=self.config['general-training']['batch-size'], logger=True, sync_dist=True)
+        self.log('val_non-similarity', non_similarity, on_epoch=True, on_step=True, prog_bar=False,
                  batch_size=self.config['general-training']['batch-size'], logger=True, sync_dist=True)
 
         self.log_loss(loss, prefix='val', on_epoch=True, on_step=False)
 
-        return loss.full_loss
+        return {'loss': loss.full_loss, 'model_out': model_out}
 
     def log_loss(self, loss: ModelLoss, prefix: str = 'train', on_epoch: bool = True, on_step: bool = False) -> None:
         self.log(f"{prefix}_loss", loss.full_loss, on_epoch=on_epoch, prog_bar=True, on_step=on_step,

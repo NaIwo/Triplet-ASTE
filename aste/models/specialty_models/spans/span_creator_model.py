@@ -1,8 +1,10 @@
 from typing import List, Optional, Dict, Tuple
 
 import torch
+from torch.nn import Sequential
 from torch import Tensor
 
+from torchmetrics import MetricCollection
 from .spans_manager import SpanInformationManager
 from ...outputs.outputs import SpanInformationOutput, SpanCreatorOutput
 from ...utils.const import CreatedSpanCodes
@@ -15,7 +17,8 @@ from ....models.outputs import (
     BaseModelOutput
 )
 from ....models.specialty_models.spans.crf import CRF
-from ....tools.metrics import Metric, get_selected_metrics
+from ....tools.metrics import get_selected_metrics
+from ..utils import sequential_blocks
 
 
 class SpanCreatorModel(BaseModel):
@@ -28,9 +31,8 @@ class SpanCreatorModel(BaseModel):
     ):
         super(SpanCreatorModel, self).__init__(model_name, config=config)
 
-        self.metrics: Metric = Metric(
-            name='Span Creator',
-            metrics=get_selected_metrics(for_spans=True)
+        self.metrics: MetricCollection = MetricCollection(
+            metrics=get_selected_metrics(for_spans=True, dist_sync_on_step=True)
         ).to(self.config['general-training']['device'])
 
         self.extend_ranges: Optional[List[int]] = extend_ranges
@@ -39,9 +41,9 @@ class SpanCreatorModel(BaseModel):
 
         self.input_dim: int = input_dim
 
+        neurons: List = [input_dim, input_dim // 2, input_dim // 8, 5]
+        self.span_creator: Sequential = sequential_blocks(neurons, self.config)
         self.crf = CRF(num_tags=5, batch_first=True)
-        self.linear_layer = torch.nn.Linear(input_dim, input_dim // 2)
-        self.final_layer = torch.nn.Linear(input_dim // 2, 5)
 
     def forward(self, data_input: BaseModelOutput) -> SpanCreatorOutput:
         features: Tensor = self.get_features(data_input.features)
@@ -54,8 +56,7 @@ class SpanCreatorModel(BaseModel):
         )
 
     def get_features(self, data: Tensor) -> Tensor:
-        out = self.linear_layer(data)
-        return self.final_layer(out)
+        return self.span_creator(data)
 
     def get_spans(self, data: Tensor, batch: Batch) -> Tuple[List[SpanInformationOutput], List[SpanInformationOutput]]:
         aspect_results: List[SpanInformationOutput] = list()
@@ -151,7 +152,7 @@ class SpanCreatorModel(BaseModel):
             true: Tensor = torch.cat([aspect, opinion], dim=0).unique(dim=0)
             tp_fn: int = true.shape[0] - int(-1 in true)
 
-            self.metrics(tp=tp, tp_fp=tp_fp, tp_fn=tp_fn)
+            self.metrics.update(tp=tp, tp_fp=tp_fp, tp_fn=tp_fn)
 
     def get_metrics(self) -> ModelMetric:
         return ModelMetric(

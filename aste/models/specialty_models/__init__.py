@@ -1,4 +1,5 @@
 from .spans.span_creator_model import SpanCreatorModel
 from .sentiments.sentiment_model import EmbeddingsExtenderModel
-from .triplets.triplets_extraction import TripletExtractorModel
-
+from .triplets.base_triplets_extractor import BaseTripletExtractorModel
+from .triplets.metric_triplets import MetricTripletExtractorModel
+from .triplets.neural_triplets import NeuralTripletExtractorModel

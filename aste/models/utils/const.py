@@ -12,5 +12,5 @@ class CreatedSpanCodes(IntEnum):
 
 
 class TripletDimensions(IntEnum):
-    OPINION: int = 1
-    ASPECT: int = 2
+    OPINION: int = 2
+    ASPECT: int = 1

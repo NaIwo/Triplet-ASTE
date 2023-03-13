@@ -8,7 +8,7 @@ from ..outputs import SpanInformationOutput, SpanCreatorOutput
 
 
 def create_embeddings_matrix_by_concat(data: SpanCreatorOutput) -> Tensor:
-    aspects, opinions = _expand_aspect_and_opinion(data.aspects_agg_emb, data.opinions_agg_emb)
+    aspects, opinions = expand_aspect_and_opinion(data.aspects_agg_emb, data.opinions_agg_emb)
     return torch.cat([aspects, opinions], dim=-1)
 
 
@@ -42,7 +42,7 @@ def create_mask_matrix_for_prediction(data: SpanCreatorOutput) -> Tensor:
 
 def _create_bool_mask(data: SpanCreatorOutput, *, diff_from: Optional[Tensor] = None,
                       equals_to: Optional[Tensor] = None) -> Tensor:
-    aspects, opinions = _expand_aspect_and_opinion(
+    aspects, opinions = expand_aspect_and_opinion(
         data.get_aspect_span_creation_info(),
         data.get_opinion_span_creation_info()
     )
@@ -59,15 +59,15 @@ def _create_bool_mask(data: SpanCreatorOutput, *, diff_from: Optional[Tensor] = 
     return aspects & opinions
 
 
-def _expand_aspect_and_opinion(aspect: Tensor, opinion: Tensor) -> Tuple[Tensor, Tensor]:
-    aspects: Tensor = aspect.unsqueeze(TripletDimensions.ASPECT)
-    opinions: Tensor = opinion.unsqueeze(TripletDimensions.OPINION)
+def expand_aspect_and_opinion(aspect: Tensor, opinion: Tensor) -> Tuple[Tensor, Tensor]:
+    aspects: Tensor = aspect.unsqueeze(TripletDimensions.OPINION)
+    opinions: Tensor = opinion.unsqueeze(TripletDimensions.ASPECT)
 
     aspect_shape: List = [-1, -1, -1, -1]
-    aspect_shape[TripletDimensions.ASPECT] = opinion.shape[1]
+    aspect_shape[TripletDimensions.OPINION] = opinion.shape[1]
 
     opinion_shape: List = [-1, -1, -1, -1]
-    opinion_shape[TripletDimensions.OPINION] = aspect.shape[1]
+    opinion_shape[TripletDimensions.ASPECT] = aspect.shape[1]
 
     aspects = aspects.expand(aspect_shape[:len(aspects.shape)])
     opinions = opinions.expand(opinion_shape[:len(opinions.shape)])
@@ -85,9 +85,9 @@ def _create_final_mask(data: SpanCreatorOutput, final_mask: Tensor) -> Tensor:
         o_idx: Tensor = sample_opinions.mapping_indexes
         a_idx = a_idx[a_idx >= 0].repeat(sample_opinions.repeated)
         o_idx = o_idx[o_idx >= 0]
-        if TripletDimensions.ASPECT == 2:
-            temp_mask[a_idx, o_idx] = True
+        if TripletDimensions.ASPECT == 1:
+            temp_mask[..., a_idx, o_idx] = True
         else:
-            temp_mask[o_idx, a_idx] = True
+            temp_mask[..., o_idx, a_idx] = True
         mask &= temp_mask
     return final_mask

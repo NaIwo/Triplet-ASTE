@@ -16,6 +16,7 @@ class EmbeddingsExtenderModel(BaseModel):
             input_dim,
             input_dim // 2,
             input_dim // 4,
+            input_dim // 4,
             input_dim // 2,
             input_dim
         ]
