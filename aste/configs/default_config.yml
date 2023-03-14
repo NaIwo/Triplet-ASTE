@@ -14,7 +14,6 @@ model:
   transformer:
     learning-rate: 0.00001
     source: microsoft/deberta-base
-  weighted-loss: True
   span-creator:
     loss-weight: 1.5
   triplet-extractor:

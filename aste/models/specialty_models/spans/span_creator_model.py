@@ -1,11 +1,12 @@
 from typing import List, Optional, Dict, Tuple
 
 import torch
-from torch.nn import Sequential
 from torch import Tensor
-
+from torch.nn import Sequential
 from torchmetrics import MetricCollection
+
 from .spans_manager import SpanInformationManager
+from ..utils import sequential_blocks
 from ...outputs.outputs import SpanInformationOutput, SpanCreatorOutput
 from ...utils.const import CreatedSpanCodes
 from ....dataset.domain import SpanCode
@@ -18,7 +19,6 @@ from ....models.outputs import (
 )
 from ....models.specialty_models.spans.crf import CRF
 from ....tools.metrics import get_selected_metrics
-from ..utils import sequential_blocks
 
 
 class SpanCreatorModel(BaseModel):
@@ -134,10 +134,14 @@ class SpanCreatorModel(BaseModel):
             model_out.batch.emb_mask,
             reduction='token_mean'
         )
-        return ModelLoss(
-            span_creator_loss=loss,
-            config=self.config
+
+        full_loss = ModelLoss(
+            config=self.config,
+            losses={
+                'span_creator_loss': loss * self.config['model']['span-creator']['loss-weight'] * self.trainable,
+            }
         )
+        return full_loss
 
     def update_metrics(self, model_out: SpanCreatorOutput) -> None:
         b: Batch = model_out.batch
@@ -156,7 +160,9 @@ class SpanCreatorModel(BaseModel):
 
     def get_metrics(self) -> ModelMetric:
         return ModelMetric(
-            span_creator_metric=self.metrics.compute()
+            metrics={
+                'span_creator_metric': self.metrics.compute()
+            }
         )
 
     def reset_metrics(self) -> None:

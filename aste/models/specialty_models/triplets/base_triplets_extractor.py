@@ -88,7 +88,14 @@ class BaseTripletExtractorModel(BaseModel):
         loss = torch.sum(loss, dim=[1, 2]) / torch.sum(model_out.loss_mask, dim=[1, 2])
         loss = -torch.log(loss)
         loss = torch.sum(loss) / self.config['general-training']['batch-size']
-        return ModelLoss(triplet_extractor_loss=loss, config=self.config)
+        full_loss = ModelLoss(
+            config=self.config,
+            losses={
+                'triplet_extractor_loss': loss * self.config['model']['triplet-extractor'][
+                    'loss-weight'] * self.trainable,
+            }
+        )
+        return full_loss
 
     def update_metrics(self, model_out: TripletModelOutput) -> None:
         tp_fn: int = model_out.loss_mask.sum().item()
@@ -103,8 +110,11 @@ class BaseTripletExtractorModel(BaseModel):
         return data >= self.config['model']['triplet-extractor']['threshold']
 
     def get_metrics(self) -> ModelMetric:
-        metrics: Dict = self.final_metrics.compute()
-        return ModelMetric(triplet_metric=metrics)
+        return ModelMetric(
+            metrics={
+                'triplet_extractor_precision': self.final_metrics.compute(),
+            }
+        )
 
     def reset_metrics(self) -> None:
         self.final_metrics.reset()

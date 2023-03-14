@@ -13,49 +13,30 @@ class ModelLoss:
 
     def __init__(
             self, *,
-            config: Optional[Dict],
-            span_creator_loss: Optional[Tensor] = None,
-            triplet_extractor_loss: Optional[Tensor] = None
+            losses: Optional[Dict[str, Tensor]] = None,
+            config: Dict,
     ):
 
-        ZERO: Tensor = torch.tensor(0., device=config['general-training']['device'])
-        self.span_creator_loss: Tensor = span_creator_loss if span_creator_loss is not None else ZERO
-        self.triplet_extractor_loss: Tensor = triplet_extractor_loss if triplet_extractor_loss is not None else ZERO
+        self.losses: Dict = losses if losses is not None else {}
         self.config: Dict = config
 
         self.raise_if_nan()
 
-        if self.config['model']['weighted-loss']:
-            self._include_weights()
-
     def raise_if_nan(self) -> None:
-        if torch.isnan(self.span_creator_loss):
-            raise ValueError(f"Span creator loss is NaN: {self.span_creator_loss}")
-        if torch.isnan(self.triplet_extractor_loss):
-            raise ValueError(f"Triplet extractor loss is NaN: {self.triplet_extractor_loss}")
+        loss_name: str
+        loss: Tensor
+        for loss_name, loss in self.losses.items():
+            if torch.isnan(loss):
+                raise ValueError(f"Loss {loss_name} is NaN.")
 
-    @classmethod
-    def from_instances(
-            cls, *,
-            span_creator_loss: ML,
-            triplet_extractor_loss: ML,
-            config: Dict
-    ) -> ML:
-        return cls(
-            span_creator_loss=span_creator_loss.span_creator_loss,
-            triplet_extractor_loss=triplet_extractor_loss.triplet_extractor_loss,
-            config=config
-        )
+    def update(self, loss: ML) -> None:
+        self.losses.update(loss.losses)
 
     def to_device(self) -> ML:
-        self.span_creator_loss = self.span_creator_loss.to(self.config['general-training']['device'])
-        self.triplet_extractor_loss = self.triplet_extractor_loss.to(self.config['general-training']['device'])
+        for loss_name, loss in self.losses.items():
+            self.losses[loss_name] = loss.to(self.config['general-training']['device'])
 
         return self
-
-    def _include_weights(self) -> None:
-        self.span_creator_loss *= self.config['model']['span-creator']['loss-weight']
-        self.triplet_extractor_loss *= self.config['model']['triplet-extractor']['loss-weight']
 
     def backward(self) -> None:
         self.full_loss.backward()
@@ -65,52 +46,25 @@ class ModelLoss:
         return self
 
     def detach(self) -> None:
-        self.span_creator_loss = self.span_creator_loss.detach()
-        self.triplet_extractor_loss = self.triplet_extractor_loss.detach()
+        for loss_name, loss in self.losses.items():
+            self.losses[loss_name] = loss.detach()
 
     @property
     def full_loss(self) -> Tensor:
-        return self.span_creator_loss + self.triplet_extractor_loss
+        full_loss: Tensor = torch.tensor(0.).to(self.config['general-training']['device'])
+        for loss_name, loss in self.losses.items():
+            full_loss += loss
+
+        return full_loss
 
     @property
     def _loss_dict(self) -> Dict:
-        return {
-            'span_creator_loss': float(self.span_creator_loss),
-            'triplet_extractor_loss': float(self.triplet_extractor_loss),
-            'full_loss': float(self.full_loss)
-        }
+        return {name: float(loss.item()) for name, loss in self.losses.items()}
 
     def to_json(self, path: str) -> None:
         os.makedirs(path[:path.rfind(os.sep)], exist_ok=True)
         with open(path, 'a') as f:
             json.dump(self._loss_dict, f)
-
-    def __radd__(self, other: ML) -> ML:
-        return self.__add__(other)
-
-    def __add__(self, other: ML) -> ML:
-        return ModelLoss(
-            span_creator_loss=self.span_creator_loss + other.span_creator_loss,
-            triplet_extractor_loss=self.triplet_extractor_loss + other.triplet_extractor_loss,
-            config=self.config
-        )
-
-    def __truediv__(self, other: float) -> ML:
-        return ModelLoss(
-            span_creator_loss=torch.Tensor(self.span_creator_loss / other),
-            triplet_extractor_loss=torch.Tensor(self.triplet_extractor_loss / other),
-            config=self.config
-        ).to_device()
-
-    def __rmul__(self, other: float) -> ML:
-        return self.__mul__(other)
-
-    def __mul__(self, other: float) -> ML:
-        return ModelLoss(
-            span_creator_loss=torch.Tensor(self.span_creator_loss * other),
-            triplet_extractor_loss=torch.Tensor(self.triplet_extractor_loss * other),
-            config=self.config
-        ).to_device()
 
     def __iter__(self):
         for element in self._loss_dict.items():

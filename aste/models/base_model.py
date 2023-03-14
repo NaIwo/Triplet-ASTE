@@ -74,7 +74,7 @@ class BaseModel(pl.LightningModule):
                  logger=True, sync_dist=True, batch_size=self.config['general-training']['batch-size'])
 
     def log_metrics(self, metrics: ModelMetric, prefix: str = 'train') -> None:
-        for metric_name, metric_values in metrics.metrics(prefix=prefix).items():
+        for metric_name, metric_values in metrics.metrics_with_prefix(prefix=prefix).items():
             self.log(metric_name, metric_values, on_epoch=True, prog_bar=False,
                      logger=True, sync_dist=True, batch_size=self.config['general-training']['batch-size'])
 

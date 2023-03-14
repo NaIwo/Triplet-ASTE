@@ -65,23 +65,23 @@ class TripletModel(BaseModel):
         )
 
     def get_loss(self, model_out: ModelOutput) -> ModelLoss:
-        s_loss = self.span_creator.get_loss(model_out.span_creator_output) * self.span_creator.trainable
-        t_loss = self.triplets_extractor.get_loss(model_out.triplet_results) * self.triplets_extractor.trainable
-        return ModelLoss.from_instances(
-            span_creator_loss=s_loss,
-            triplet_extractor_loss=t_loss,
-            config=self.config
-        )
+        full_loss = ModelLoss(config=self.config)
+
+        full_loss.update(self.span_creator.get_loss(model_out.span_creator_output))
+        full_loss.update(self.triplets_extractor.get_loss(model_out.triplet_results))
+
+        return full_loss
 
     def update_metrics(self, model_out: ModelOutput) -> None:
         self.span_creator.update_metrics(model_out.span_creator_output)
         self.triplets_extractor.update_metrics(model_out.triplet_results)
 
     def get_metrics(self) -> ModelMetric:
-        return ModelMetric.from_instances(
-            span_creator_metric=self.span_creator.get_metrics(),
-            triplet_metric=self.triplets_extractor.get_metrics(),
-        )
+        metrics = ModelMetric()
+        metrics.update(self.span_creator.get_metrics())
+        metrics.update(self.triplets_extractor.get_metrics())
+
+        return metrics
 
     def reset_metrics(self) -> None:
         self.span_creator.reset_metrics()
@@ -108,12 +108,12 @@ class TripletModel(BaseModel):
     def log_loss(self, loss: ModelLoss, prefix: str = 'train', on_epoch: bool = True, on_step: bool = False) -> None:
         self.log(f"{prefix}_loss", loss.full_loss, on_epoch=on_epoch, prog_bar=True, on_step=on_step,
                  logger=True, sync_dist=True, batch_size=self.config['general-training']['batch-size'])
-        self.log(f"{prefix}_loss_span_creator_loss", loss.span_creator_loss, on_epoch=on_epoch, on_step=on_step,
-                 prog_bar=True, logger=True, sync_dist=True, batch_size=self.config['general-training']['batch-size'])
-        self.log(f"{prefix}_loss_triplet_extractor_loss", loss.triplet_extractor_loss, on_epoch=on_epoch,
-                 on_step=on_step, prog_bar=True, logger=True, sync_dist=True,
-                 batch_size=self.config['general-training']['batch-size']
-                 )
+
+        for loss_name, loss in loss.losses.items():
+            self.log(f"{prefix}_loss_{loss_name}", loss, on_epoch=on_epoch, on_step=on_step,
+                     prog_bar=True, logger=True, sync_dist=True,
+                     batch_size=self.config['general-training']['batch-size']
+                     )
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.get_params_and_lr(), lr=1e-5)
