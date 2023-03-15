@@ -112,7 +112,7 @@ class BaseTripletExtractorModel(BaseModel):
     def get_metrics(self) -> ModelMetric:
         return ModelMetric(
             metrics={
-                'triplet_extractor_precision': self.final_metrics.compute(),
+                'triplet_extractor_metric': self.final_metrics.compute(),
             }
         )
 

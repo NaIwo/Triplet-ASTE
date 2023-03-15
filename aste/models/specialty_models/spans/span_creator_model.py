@@ -27,7 +27,7 @@ class SpanCreatorModel(BaseModel):
             input_dim: int,
             config: Dict,
             model_name: str = 'Span Creator Model',
-            extend_ranges: Optional[List[int]] = None
+            extend_ranges: Optional[List[List[int]]] = None
     ):
         super(SpanCreatorModel, self).__init__(model_name, config=config)
 
@@ -35,9 +35,9 @@ class SpanCreatorModel(BaseModel):
             metrics=get_selected_metrics(for_spans=True, dist_sync_on_step=True)
         ).to(self.config['general-training']['device'])
 
-        self.extend_ranges: Optional[List[int]] = extend_ranges
+        self.extend_ranges: Optional[List[List[int]]] = extend_ranges
         if extend_ranges is None:
-            self.extend_ranges: List[int] = []
+            self.extend_ranges = []
 
         self.input_dim: int = input_dim
 

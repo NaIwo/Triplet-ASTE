@@ -19,7 +19,7 @@ def ignore_index(func):
             target_ignored = target[indices]
             if 'mask' in kwargs.keys():
                 kwargs['mask'] = kwargs['mask'][indices]
-            res = func(self, preds_ignored, target_ignored, *args, **kwargs)
+            res = func(self, preds_ignored, target_ignored)
         else:
             res = func(self, *args, **kwargs)
         return res

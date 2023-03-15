@@ -7,5 +7,6 @@ from .outputs import (
     SpanInformationOutput,
     SpanCreatorOutput,
     SampleTripletOutput,
-    TripletModelOutput
+    TripletModelOutput,
+    ClassificationModelOutput,
 )

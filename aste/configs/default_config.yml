@@ -16,6 +16,8 @@ model:
     source: microsoft/deberta-base
   span-creator:
     loss-weight: 1.5
+  span-classifier:
+    loss-weight: 0.5
   triplet-extractor:
     loss-weight: 1.0
     threshold: 0.51

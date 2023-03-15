@@ -28,15 +28,18 @@ class SpanInformationManager:
         self.span_creation_info += [code] * true_spans.shape[0]
         self.sentiments += sample.sentiments[0].tolist()
 
-    def extend_span_ranges(self, sample: Batch, extend_ranges: List[int]) -> None:
+    def extend_span_ranges(self, sample: Batch, extend_ranges: List[List[int]]) -> None:
         before: Callable = sample.sentence_obj[0].get_index_before_encoding
         after: Callable = sample.sentence_obj[0].get_index_after_encoding
 
         begin: int
         end: int
         for begin, end in self.span_ranges:
-            [self.add_predicted_information(after(before(begin) + shift), end) for shift in extend_ranges]
-            [self.add_predicted_information(begin, after(before(end) + shift)) for shift in extend_ranges]
+            for shift_l, shift_r in extend_ranges:
+                self.add_predicted_information(
+                    after(before(begin) + shift_l),
+                    after(before(end) + shift_r)
+                )
 
     def add_predicted_information(self, b_idx: int, end_idx: int) -> None:
         span_range: List = [b_idx, end_idx]

@@ -1,8 +1,21 @@
 from typing import Optional, List
 
 import torch
-from torchmetrics import FBetaScore, Accuracy, Precision, Recall, F1Score
+from torchmetrics import FBetaScore, Accuracy, Precision, Recall, F1Score, MetricCollection
 from torchmetrics import Metric as TorchMetric
+
+from ..utils import ignore_index
+
+
+class CustomMetricCollection(MetricCollection):
+    def __init__(self, name: str, ignore_index: Optional[int] = None, *args, **kwargs):
+        self.ignore_index = ignore_index
+        self.name: str = name
+        super().__init__(*args, **kwargs)
+
+    @ignore_index
+    def update(self, *args, **kwargs):
+        super(CustomMetricCollection, self).update(*args, **kwargs)
 
 
 class SpanMetric(TorchMetric):
@@ -57,6 +70,7 @@ def get_selected_metrics(
         num_classes: int = 1,
         task: str = 'binary',
         for_spans: bool = False,
+        ignore_index: int = -100,
         dist_sync_on_step: bool = False
 ) -> List:
     if for_spans:
@@ -67,9 +81,9 @@ def get_selected_metrics(
         ]
     else:
         return [
-            Precision(num_classes=num_classes, task=task),
-            Recall(num_classes=num_classes, task=task),
-            Accuracy(num_classes=num_classes, task=task),
-            FBetaScore(num_classes=num_classes, task=task, beta=0.5),
-            F1Score(num_classes=num_classes, task=task)
+            Precision(num_classes=num_classes, task=task, ignore_index=ignore_index),
+            Recall(num_classes=num_classes, task=task, ignore_index=ignore_index),
+            Accuracy(num_classes=num_classes, task=task, ignore_index=ignore_index),
+            FBetaScore(num_classes=num_classes, task=task, beta=0.5, ignore_index=ignore_index),
+            F1Score(num_classes=num_classes, task=task, ignore_index=ignore_index)
         ]

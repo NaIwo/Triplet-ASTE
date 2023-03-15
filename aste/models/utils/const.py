@@ -2,15 +2,15 @@ from enum import IntEnum
 
 
 class CreatedSpanCodes(IntEnum):
-    NOT_RELEVANT: int = -1
+    NOT_RELEVANT = -1
 
-    ADDED_FALSE: int = 0
-    ADDED_TRUE: int = 1
+    ADDED_FALSE = 0
+    ADDED_TRUE = 1
 
-    PREDICTED_FALSE: int = 2
-    PREDICTED_TRUE: int = 3
+    PREDICTED_FALSE = 2
+    PREDICTED_TRUE = 3
 
 
 class TripletDimensions(IntEnum):
-    OPINION: int = 2
-    ASPECT: int = 1
+    OPINION = 2
+    ASPECT = 1

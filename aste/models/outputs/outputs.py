@@ -295,15 +295,37 @@ class TripletModelOutput(BaseModelOutput):
         return sum(len(sample.triplets) for sample in self.triplets)
 
 
+class ClassificationModelOutput(BaseModelOutput):
+    def __init__(
+            self,
+            batch: Batch,
+            aspect_features: Tensor,
+            opinion_features: Tensor,
+            aspect_predictions: Tensor,
+            opinion_predictions: Tensor,
+            aspect_labels: Tensor,
+            opinion_labels: Tensor,
+    ):
+        super().__init__(batch=batch)
+        self.aspect_features: Tensor = aspect_features
+        self.opinion_features: Tensor = opinion_features
+        self.aspect_predictions: Tensor = aspect_predictions
+        self.opinion_predictions: Tensor = opinion_predictions
+        self.aspect_labels: Tensor = aspect_labels
+        self.opinion_labels: Tensor = opinion_labels
+
+
 class ModelOutput(BaseModelOutput):
 
     def __init__(
             self,
             batch: Batch,
             span_creator_output: SpanCreatorOutput,
-            triplet_results: TripletModelOutput
+            triplet_results: TripletModelOutput,
+            span_classification_output: Optional[ClassificationModelOutput] = None
     ):
         super().__init__(batch=batch)
 
         self.span_creator_output: SpanCreatorOutput = span_creator_output
         self.triplet_results: TripletModelOutput = triplet_results
+        self.span_classification_output: Optional[ClassificationModelOutput] = span_classification_output

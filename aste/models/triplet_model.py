@@ -22,7 +22,8 @@ from .specialty_models import (
     SpanCreatorModel,
     EmbeddingsExtenderModel,
     NeuralTripletExtractorModel,
-    MetricTripletExtractorModel
+    MetricTripletExtractorModel,
+    SpanClassifierModel
 )
 from ..dataset.reader import Batch
 
@@ -32,7 +33,7 @@ class TripletModel(BaseModel):
         super(TripletModel, self).__init__(model_name, config=config)
 
         self.emb_layer: BaseEmbedding = TransformerWithAggregation(config=config)
-        self.span_creator: BaseModel = SpanCreatorModel(input_dim=self.emb_layer.embedding_dim, config=config)#, extend_ranges=[-1, 1])
+        self.span_creator: BaseModel = SpanCreatorModel(input_dim=self.emb_layer.embedding_dim, config=config)#, extend_ranges=[[-1, 0], [1, 0], [0, -1], [0, 1])
         self.aggregator: BaseAggregator = EndPointAggregator(input_dim=self.emb_layer.embedding_dim, config=config)
         self.sentiment_extender: BaseModel = EmbeddingsExtenderModel(input_dim=self.aggregator.output_dim,
                                                                      config=config)
