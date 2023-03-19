@@ -11,7 +11,7 @@ from ....dataset.domain.const import ASTELabels
 class EmbeddingsExtenderModel(BaseModel):
     def __init__(self, input_dim: int, config: Dict, model_name: str = 'Sentiment extender model'):
         super(EmbeddingsExtenderModel, self).__init__(model_name=model_name, config=config)
-        self.common_model = sequential_blocks([input_dim, input_dim], self.config)
+        self.common_model = sequential_blocks([input_dim, input_dim], self.config, is_last=False)
         neurons: List = [
             input_dim,
             input_dim // 2,

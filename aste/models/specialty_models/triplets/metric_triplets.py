@@ -38,10 +38,10 @@ class MetricTripletExtractorModel(BaseTripletExtractorModel):
         self.similarity_metric = torch.nn.CosineSimilarity(dim=-1)
 
     def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:
-        aspects, opinions = expand_aspect_and_opinion(data_input.aspects_agg_emb, data_input.opinions_agg_emb)
+        aspects = self.aspect_net(data_input.aspects_agg_emb)
+        opinions = self.opinion_net(data_input.opinions_agg_emb)
 
-        aspects = self.aspect_net(aspects)
-        opinions = self.opinion_net(opinions)
+        aspects, opinions = expand_aspect_and_opinion(aspects, opinions)
 
         matrix: Tensor = self.similarity_metric(aspects, opinions)
         matrix = scale_scores(matrix)

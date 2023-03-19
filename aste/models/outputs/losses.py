@@ -51,9 +51,12 @@ class ModelLoss:
 
     @property
     def full_loss(self) -> Tensor:
-        full_loss: Tensor = torch.tensor(0.).to(self.config['general-training']['device'])
+        full_loss: Optional[Tensor] = None
         for loss_name, loss in self.losses.items():
-            full_loss += loss
+            if full_loss is None:
+                full_loss = loss
+            else:
+                full_loss += loss
 
         return full_loss
 

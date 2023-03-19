@@ -17,6 +17,8 @@ class SpanInformationManager:
 
     def add_true_information(self, sample: Batch, source: str, code: int = CreatedSpanCodes.ADDED_TRUE) -> None:
         true_spans: Tensor = getattr(sample, f'{source.lower()}_spans')[0]
+        mask = (true_spans != torch.tensor([-1, -1])).all(dim=1)
+        true_spans = true_spans[mask]
         if true_spans.nelement() == 0:
             return
 
@@ -26,7 +28,7 @@ class SpanInformationManager:
         self.span_ranges += true_spans.tolist()
         self.mapping_indexes += mapping_idx.tolist()
         self.span_creation_info += [code] * true_spans.shape[0]
-        self.sentiments += sample.sentiments[0].tolist()
+        self.sentiments += sample.sentiments[0][mask].tolist()
 
     def extend_span_ranges(self, sample: Batch, extend_ranges: List[List[int]]) -> None:
         before: Callable = sample.sentence_obj[0].get_index_before_encoding

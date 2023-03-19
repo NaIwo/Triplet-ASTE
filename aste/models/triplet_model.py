@@ -104,7 +104,7 @@ class TripletModel(BaseModel):
 
         self.log_loss(loss, prefix='val', on_epoch=True, on_step=False)
 
-        return {'loss': loss.full_loss, 'model_out': model_out}
+        return loss.full_loss
 
     def log_loss(self, loss: ModelLoss, prefix: str = 'train', on_epoch: bool = True, on_step: bool = False) -> None:
         self.log(f"{prefix}_loss", loss.full_loss, on_epoch=on_epoch, prog_bar=True, on_step=on_step,
