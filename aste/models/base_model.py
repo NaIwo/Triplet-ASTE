@@ -42,25 +42,29 @@ class BaseModel(pl.LightningModule):
 
     def validation_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> Optional[STEP_OUTPUT]:
         model_out: BaseModelOutput = self.forward(batch)
-        self.update_metrics(model_out)
         loss: ModelLoss = self.get_loss(model_out)
 
         self.log_loss(loss, prefix='val', on_epoch=True, on_step=False)
-        return loss.full_loss
+        return {'loss': loss.full_loss, 'model_out': model_out}
 
-    def validation_epoch_end(self, *args, **kwargs) -> None:
+    def validation_step_end(self, outputs) -> None:
+        self.update_metrics(outputs['model_out'])
+
+    def on_validation_epoch_end(self, *args, **kwargs) -> None:
         metrics: ModelMetric = self.get_metrics_and_reset()
         self.log_metrics(metrics, prefix='val')
 
     def test_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> Optional[STEP_OUTPUT]:
         model_out: BaseModelOutput = self.forward(batch)
-        self.update_metrics(model_out)
         loss: ModelLoss = self.get_loss(model_out)
 
         self.log_loss(loss=loss, prefix='test', on_epoch=True, on_step=False)
-        return loss.full_loss
+        return {'loss': loss.full_loss, 'model_out': model_out}
 
-    def test_epoch_end(self, *args, **kwargs) -> None:
+    def test_step_end(self, outputs) -> None:
+        self.update_metrics(outputs['model_out'])
+
+    def on_test_epoch_end(self, *args, **kwargs) -> None:
         metrics: ModelMetric = self.get_metrics_and_reset()
         self.log_metrics(metrics, prefix='test')
 
@@ -69,7 +73,7 @@ class BaseModel(pl.LightningModule):
                  logger=True, sync_dist=True, batch_size=self.config['general-training']['batch-size'])
 
     def log_metrics(self, metrics: ModelMetric, prefix: str = 'train') -> None:
-        for metric_name, metric_values in metrics.metrics_with_prefix(prefix=prefix).items():
+        for metric_name, metric_values in metrics.metrics_with_prefix(prefix=prefix):
             self.log(metric_name, metric_values, on_epoch=True, prog_bar=False,
                      logger=True, sync_dist=True, batch_size=self.config['general-training']['batch-size'])
 

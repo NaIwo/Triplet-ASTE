@@ -41,9 +41,9 @@ class SpanCreatorModel(BaseModel):
 
         self.input_dim: int = input_dim
 
-        neurons: List = [input_dim, input_dim // 2, input_dim // 8, 5]
-        self.span_creator: Sequential = sequential_blocks(neurons, self.config)
         self.crf = CRF(num_tags=5, batch_first=True)
+        self.linear_layer = torch.nn.Linear(input_dim, input_dim // 2)
+        self.final_layer = torch.nn.Linear(input_dim // 2, 5)
 
     def forward(self, data_input: BaseModelOutput) -> SpanCreatorOutput:
         features: Tensor = self.get_features(data_input.features)
@@ -56,7 +56,8 @@ class SpanCreatorModel(BaseModel):
         )
 
     def get_features(self, data: Tensor) -> Tensor:
-        return self.span_creator(data)
+        out = self.linear_layer(data)
+        return self.final_layer(out)
 
     def get_spans(self, data: Tensor, batch: Batch) -> Tuple[List[SpanInformationOutput], List[SpanInformationOutput]]:
         aspect_results: List[SpanInformationOutput] = list()

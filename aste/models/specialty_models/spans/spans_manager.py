@@ -17,7 +17,7 @@ class SpanInformationManager:
 
     def add_true_information(self, sample: Batch, source: str, code: int = CreatedSpanCodes.ADDED_TRUE) -> None:
         true_spans: Tensor = getattr(sample, f'{source.lower()}_spans')[0]
-        mask = (true_spans != torch.tensor([-1, -1])).all(dim=1)
+        mask = (true_spans != torch.tensor([-1, -1]).to(true_spans)).all(dim=1)
         true_spans = true_spans[mask]
         if true_spans.nelement() == 0:
             return

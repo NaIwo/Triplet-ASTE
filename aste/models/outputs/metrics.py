@@ -1,6 +1,6 @@
 import json
 import os
-from typing import TypeVar, Optional, Dict
+from typing import TypeVar, Optional, Dict, Tuple
 
 from torch import Tensor
 
@@ -32,7 +32,9 @@ class ModelMetric:
         for metrics in self.metrics:
             yield metrics
 
-    def metrics_with_prefix(self, prefix: str) -> Dict:
+    def metrics_with_prefix(self, prefix: str) -> Tuple:
         name: str
         score: Tensor
-        return {f'{prefix}__{name}': score for name, score in self.metrics.items()}
+        for name, score in self.metrics.items():
+            for k, v in score.items():
+                yield f'{prefix}__{name}_{k}', v

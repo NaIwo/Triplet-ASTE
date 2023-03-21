@@ -16,12 +16,14 @@ from .outputs import (
     BaseModelOutput,
     SpanCreatorOutput,
     TripletModelOutput,
+    ClassificationModelOutput,
     SentimentModelOutput, ModelOutput
 )
 from .specialty_models import (
     SpanCreatorModel,
     EmbeddingsExtenderModel,
     NeuralTripletExtractorModel,
+    AttentionTripletExtractorModel,
     MetricTripletExtractorModel,
     SpanClassifierModel
 )
@@ -37,6 +39,7 @@ class TripletModel(BaseModel):
         self.aggregator: BaseAggregator = EndPointAggregator(input_dim=self.emb_layer.embedding_dim, config=config)
         self.sentiment_extender: BaseModel = EmbeddingsExtenderModel(input_dim=self.aggregator.output_dim,
                                                                      config=config)
+        self.span_classifier: BaseModel = SpanClassifierModel(input_dim=self.aggregator.output_dim, config=config)
         self.triplets_extractor: BaseModel = MetricTripletExtractorModel(
             config=config, input_dim=self.aggregator.output_dim
         )
@@ -57,12 +60,18 @@ class TripletModel(BaseModel):
         extended_opinions: SentimentModelOutput = self.sentiment_extender(span_creator_output.opinions_agg_emb)
         span_creator_output = span_creator_output.extend_opinions_with_sentiments(extended_opinions)
 
+        span_classifier_output: ClassificationModelOutput = self.span_classifier(span_creator_output)
+
+        span_creator_output.aspects_agg_emb = span_classifier_output.aspect_features
+        span_creator_output.opinions_agg_emb = span_classifier_output.opinion_features
+
         triplet_output: TripletModelOutput = self.triplets_extractor(span_creator_output)
 
         return ModelOutput(
             batch=batch,
             span_creator_output=span_creator_output,
             triplet_results=triplet_output,
+            span_classification_output=span_classifier_output
         )
 
     def get_loss(self, model_out: ModelOutput) -> ModelLoss:
@@ -70,27 +79,30 @@ class TripletModel(BaseModel):
 
         full_loss.update(self.span_creator.get_loss(model_out.span_creator_output))
         full_loss.update(self.triplets_extractor.get_loss(model_out.triplet_results))
+        full_loss.update(self.span_classifier.get_loss(model_out.span_classification_output))
 
         return full_loss
 
     def update_metrics(self, model_out: ModelOutput) -> None:
         self.span_creator.update_metrics(model_out.span_creator_output)
         self.triplets_extractor.update_metrics(model_out.triplet_results)
+        self.span_classifier.update_metrics(model_out.span_classification_output)
 
     def get_metrics(self) -> ModelMetric:
         metrics = ModelMetric()
         metrics.update(self.span_creator.get_metrics())
         metrics.update(self.triplets_extractor.get_metrics())
+        metrics.update(self.span_classifier.get_metrics())
 
         return metrics
 
     def reset_metrics(self) -> None:
         self.span_creator.reset_metrics()
         self.triplets_extractor.reset_metrics()
+        self.span_classifier.reset_metrics()
 
     def validation_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> Optional[STEP_OUTPUT]:
         model_out: ModelOutput = self.forward(batch)
-        self.update_metrics(model_out)
         loss: ModelLoss = self.get_loss(model_out)
 
         mt = model_out.triplet_results
@@ -104,7 +116,7 @@ class TripletModel(BaseModel):
 
         self.log_loss(loss, prefix='val', on_epoch=True, on_step=False)
 
-        return loss.full_loss
+        return {'loss': loss.full_loss, 'model_out': model_out}
 
     def log_loss(self, loss: ModelLoss, prefix: str = 'train', on_epoch: bool = True, on_step: bool = False) -> None:
         self.log(f"{prefix}_loss", loss.full_loss, on_epoch=on_epoch, prog_bar=True, on_step=on_step,

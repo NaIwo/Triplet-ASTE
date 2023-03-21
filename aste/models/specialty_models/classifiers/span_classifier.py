@@ -39,8 +39,8 @@ class SpanClassifierModel(BaseModel):
             input_dim // 2,
             input_dim
         ]
-        self.aspect_net = sequential_blocks(neurons=neurons, config=self.config)
-        self.opinion_net = sequential_blocks(neurons=neurons, config=self.config)
+        self.aspect_net = sequential_blocks(neurons=neurons, config=self.config, is_last=False)
+        self.opinion_net = sequential_blocks(neurons=neurons, config=self.config, is_last=False)
 
         neurons: List = [
             input_dim,

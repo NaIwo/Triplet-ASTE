@@ -67,7 +67,15 @@ class DatasetLoader:
         self.encoder: BaseEncoder = encoder
         self.config = config
 
-    def load(self, name: Union[str, List[str]], drop_last: bool = False, shuffle: bool = True) -> DataLoader:
+    def load(
+            self,
+            name: Union[str, List[str]],
+            drop_last: bool = False,
+            shuffle: bool = True,
+            num_workers: int = 2,
+            prefetch_factor: int = 2,
+            persistent_workers: bool = True
+    ) -> DataLoader:
         if isinstance(name, str):
             name = [name]
 
@@ -84,8 +92,11 @@ class DatasetLoader:
             dataset,
             batch_size=self.config['general-training']['batch-size'],
             shuffle=shuffle,
-            prefetch_factor=2,
-            drop_last=drop_last, collate_fn=self._collate_fn
+            prefetch_factor=prefetch_factor,
+            num_workers=num_workers,
+            drop_last=drop_last,
+            persistent_workers=persistent_workers,
+            collate_fn=self._collate_fn
         )
 
     def _collate_fn(self, batch: List):
@@ -134,7 +145,7 @@ class DatasetLoader:
             sub_words_masks=sub_words_masks_batch[idx],
             mask=mask[idx],
             emb_mask=emb_mask[idx]
-            ).to_device(self.config)
+            )#.to_device(self.config)
 
     @staticmethod
     def _get_list_of_sentence_objs(sentence_objs: List[Sentence], idx: Tensor) -> List[Sentence]:

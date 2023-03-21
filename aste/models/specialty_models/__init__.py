@@ -3,4 +3,5 @@ from .sentiments.sentiment_model import EmbeddingsExtenderModel
 from .triplets.base_triplets_extractor import BaseTripletExtractorModel
 from .triplets.metric_triplets import MetricTripletExtractorModel
 from .triplets.neural_triplets import NeuralTripletExtractorModel
+from .triplets.attention_triplets import AttentionTripletExtractorModel
 from .classifiers.span_classifier import SpanClassifierModel

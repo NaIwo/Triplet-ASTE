@@ -17,6 +17,7 @@ def sequential_blocks(
     for idx in range(len(neurons[:-1 - int(is_last)])):
         blocks.append(
             Sequential(
+                torch.nn.LayerNorm(neurons[idx]),
                 torch.nn.Linear(neurons[idx], neurons[idx + 1]),
                 torch.nn.ReLU(),
                 torch.nn.Dropout(0.1)
