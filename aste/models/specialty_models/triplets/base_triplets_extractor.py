@@ -29,8 +29,7 @@ class BaseTripletExtractorModel(BaseModel):
         super(BaseTripletExtractorModel, self).__init__(model_name=model_name, config=config)
 
         metrics = get_selected_metrics(for_spans=True, dist_sync_on_step=True)
-        self.final_metrics: MetricCollection = MetricCollection(metrics=metrics).to(
-            self.config['general-training']['device'])
+        self.final_metrics: MetricCollection = MetricCollection(metrics=metrics)
 
     def forward(self, data_input: SpanCreatorOutput) -> TripletModelOutput:
         matrix: Tensor = self._forward_embeddings(data_input)

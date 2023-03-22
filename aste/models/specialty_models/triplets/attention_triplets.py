@@ -24,10 +24,10 @@ class AttentionTripletExtractorModel(BaseTripletExtractorModel):
         super(AttentionTripletExtractorModel, self).__init__(model_name=model_name, config=config)
 
         neurons: List = [input_dim, input_dim // 2, input_dim // 2, input_dim]
-        self.query = sequential_blocks(neurons=neurons, config=self.config)
-        self.key = sequential_blocks(neurons=neurons, config=self.config)
+        self.query = sequential_blocks(neurons=neurons, device=self.device)
+        self.key = sequential_blocks(neurons=neurons, device=self.device)
         neurons: List = [input_dim, input_dim // 2, input_dim // 4, 1]
-        self.value = sequential_blocks(neurons=neurons, config=self.config)
+        self.value = sequential_blocks(neurons=neurons, device=self.device)
 
     def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:
         queries = self.query(data_input.aspects_agg_emb)

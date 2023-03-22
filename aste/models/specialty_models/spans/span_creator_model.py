@@ -33,7 +33,7 @@ class SpanCreatorModel(BaseModel):
 
         self.metrics: MetricCollection = MetricCollection(
             metrics=get_selected_metrics(for_spans=True, dist_sync_on_step=True)
-        ).to(self.config['general-training']['device'])
+        )
 
         self.extend_ranges: Optional[List[List[int]]] = extend_ranges
         if extend_ranges is None:
@@ -41,7 +41,7 @@ class SpanCreatorModel(BaseModel):
 
         self.input_dim: int = input_dim
 
-        self.crf = CRF(num_tags=5, batch_first=True)
+        self.crf = CRF(num_tags=5, batch_first=True).to(self.device)
         self.linear_layer = torch.nn.Linear(input_dim, input_dim // 2)
         self.final_layer = torch.nn.Linear(input_dim // 2, 5)
 
@@ -65,7 +65,7 @@ class SpanCreatorModel(BaseModel):
         best_paths: List[List[int]] = self.crf.decode(data, mask=batch.emb_mask[:, :data.shape[1], ...])
 
         for best_path, sample in zip(best_paths, batch):
-            best_path = torch.tensor(best_path).to(self.config['general-training']['device'])
+            best_path = torch.tensor(best_path).to(sample.emb_mask)
             offset: int = sample.sentence_obj[0].encoder.offset
             best_path[:offset] = SpanCode.NOT_SPLIT
             best_path[sum(sample.emb_mask[0]) - offset:] = SpanCode.NOT_SPLIT
@@ -102,7 +102,7 @@ class SpanCreatorModel(BaseModel):
         return SpanInformationOutput.from_span_manager(
             span_manager,
             sample.sentence_obj[0]
-        ).to_device(self.config['general-training']['device'])
+        ).to_device(seq.device)
 
     @staticmethod
     def _replace_not_split(seq: Tensor, source: str) -> Tensor:

@@ -145,7 +145,7 @@ class DatasetLoader:
             sub_words_masks=sub_words_masks_batch[idx],
             mask=mask[idx],
             emb_mask=emb_mask[idx]
-            )#.to_device(self.config)
+            )
 
     @staticmethod
     def _get_list_of_sentence_objs(sentence_objs: List[Sentence], idx: Tensor) -> List[Sentence]:
@@ -198,15 +198,15 @@ class Batch:
             chunk_label=torch.tensor([[]])
         )
 
-    def to_device(self, config: Dict):
-        self.sentence = self.sentence.to(config['general-training']['device'])
-        self.sub_words_mask = self.sub_words_mask.to(config['general-training']['device'])
-        self.mask = self.mask.to(config['general-training']['device'])
-        self.emb_mask = self.emb_mask.to(config['general-training']['device'])
-        self.aspect_spans = self.aspect_spans.to(config['general-training']['device'])
-        self.opinion_spans = self.opinion_spans.to(config['general-training']['device'])
-        self.sentiments = self.sentiments.to(config['general-training']['device'])
-        self.chunk_label = self.chunk_label.to(config['general-training']['device'])
+    def to_device(self, device: torch.device):
+        self.sentence = self.sentence.to(device)
+        self.sub_words_mask = self.sub_words_mask.to(device)
+        self.mask = self.mask.to(device)
+        self.emb_mask = self.emb_mask.to(device)
+        self.aspect_spans = self.aspect_spans.to(device)
+        self.opinion_spans = self.opinion_spans.to(device)
+        self.sentiments = self.sentiments.to(device)
+        self.chunk_label = self.chunk_label.to(device)
 
         return self
 

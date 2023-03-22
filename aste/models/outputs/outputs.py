@@ -79,7 +79,7 @@ class SpanInformationOutput(BaseModelOutput):
             sentence=sentence
         )
 
-    def to_device(self, device: str):
+    def to_device(self, device: torch.device) -> SIO:
         self.span_range = self.span_range.to(device)
         self.span_creation_info = self.span_creation_info.to(device)
         self.sentiments = self.sentiments.to(device)

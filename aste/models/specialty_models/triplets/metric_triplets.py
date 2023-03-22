@@ -32,8 +32,8 @@ class MetricTripletExtractorModel(BaseTripletExtractorModel):
             input_dim // 2,
             input_dim
         ]
-        self.aspect_net = sequential_blocks(neurons=neurons, config=self.config)
-        self.opinion_net = sequential_blocks(neurons=neurons, config=self.config)
+        self.aspect_net = sequential_blocks(neurons=neurons, device=self.device)
+        self.opinion_net = sequential_blocks(neurons=neurons, device=self.device)
 
         self.similarity_metric = torch.nn.CosineSimilarity(dim=-1)
 

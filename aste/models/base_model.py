@@ -146,7 +146,7 @@ class BaseModel(pl.LightningModule):
     @predict.register
     @torch.no_grad()
     def predict_sentence(self, sample: Sentence) -> BaseModelOutput:
-        sample = Batch.from_sentence(sample).to_device(self.config)
+        sample = Batch.from_sentence(sample)
         self.eval()
         out: BaseModelOutput = self.forward(sample)
         return out

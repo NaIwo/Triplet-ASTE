@@ -26,7 +26,7 @@ class NeuralTripletExtractorModel(BaseTripletExtractorModel):
         input_dimension: int = input_dim * 2
 
         neurons: List = [input_dimension, input_dimension // 2, input_dimension // 4, input_dimension // 8, 1]
-        self.similarity: Sequential = sequential_blocks(neurons, self.config)
+        self.similarity: Sequential = sequential_blocks(neurons, self.device)
         self.similarity.append(torch.nn.Sigmoid())
 
     def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:

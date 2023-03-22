@@ -6,7 +6,7 @@ from torch.nn import Sequential
 
 def sequential_blocks(
         neurons: List,
-        config: Dict,
+        device: Optional[torch.device],
         blocks: Optional[Sequential] = None,
         is_last: bool = True
 ) -> Sequential:
@@ -28,4 +28,4 @@ def sequential_blocks(
             torch.nn.Linear(neurons[-2], neurons[-1])
         )
 
-    return blocks.to(config['general-training']['device'])
+    return blocks.to(device)

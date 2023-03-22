@@ -29,7 +29,7 @@ class SpanClassifierModel(BaseModel):
             name='Span classifier',
             ignore_index=CreatedSpanCodes.NOT_RELEVANT.value,
             metrics=metrics
-        ).to(self.config['general-training']['device'])
+        )
 
         self.loss = torch.nn.CrossEntropyLoss(ignore_index=CreatedSpanCodes.NOT_RELEVANT.value)
 
@@ -39,15 +39,15 @@ class SpanClassifierModel(BaseModel):
             input_dim // 2,
             input_dim
         ]
-        self.aspect_net = sequential_blocks(neurons=neurons, config=self.config, is_last=False)
-        self.opinion_net = sequential_blocks(neurons=neurons, config=self.config, is_last=False)
+        self.aspect_net = sequential_blocks(neurons=neurons, is_last=False, device=self.device)
+        self.opinion_net = sequential_blocks(neurons=neurons, is_last=False, device=self.device)
 
         neurons: List = [
             input_dim,
             input_dim // 4,
             1
         ]
-        self.prediction_net = sequential_blocks(neurons=neurons, config=self.config)
+        self.prediction_net = sequential_blocks(neurons=neurons, device=self.device)
         self.prediction_net.append(
             torch.nn.Sigmoid()
         )
