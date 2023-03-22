@@ -10,7 +10,7 @@ from ...outputs import (
     SpanCreatorOutput
 )
 from ...utils.triplet_utils import (
-    create_embeddings_matrix_by_concat,
+    create_embeddings_matrix_by_concat_tensors,
     create_embedding_mask_matrix
 )
 
@@ -25,12 +25,21 @@ class NeuralTripletExtractorModel(BaseTripletExtractorModel):
 
         input_dimension: int = input_dim * 2
 
+        neurons: List = [input_dim, input_dim // 2, input_dim // 2, input_dim]
+        self.aspect_net = sequential_blocks(neurons=neurons, device=self.device)
+        self.opinion_net = sequential_blocks(neurons=neurons, device=self.device)
+
         neurons: List = [input_dimension, input_dimension // 2, input_dimension // 4, input_dimension // 8, 1]
         self.similarity: Sequential = sequential_blocks(neurons, self.device)
         self.similarity.append(torch.nn.Sigmoid())
 
     def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:
-        matrix: Tensor = create_embeddings_matrix_by_concat(data_input)
+        aspects = self.aspect_net(data_input.aspects_agg_emb)
+        opinions = self.opinion_net(data_input.opinions_agg_emb)
+
+        matrix: Tensor = create_embeddings_matrix_by_concat_tensors(aspects, opinions)
         mask: Tensor = create_embedding_mask_matrix(data_input)
+
         matrix = self.similarity(matrix)
+
         return matrix.squeeze(-1) * mask

@@ -47,7 +47,8 @@ class SpanInformationManager:
         span_range: List = [b_idx, end_idx]
         if span_range in self.span_ranges:
             index: int = self.span_ranges.index(span_range)
-            self.span_creation_info[index] = CreatedSpanCodes.PREDICTED_TRUE
+            if self.span_creation_info[index] == CreatedSpanCodes.ADDED_TRUE:
+                self.span_creation_info[index] = CreatedSpanCodes.PREDICTED_TRUE
         elif end_idx >= b_idx:
             self.span_ranges += [span_range]
             self.span_creation_info += [CreatedSpanCodes.PREDICTED_FALSE]

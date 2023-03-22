@@ -12,6 +12,11 @@ def create_embeddings_matrix_by_concat(data: SpanCreatorOutput) -> Tensor:
     return torch.cat([aspects, opinions], dim=-1)
 
 
+def create_embeddings_matrix_by_concat_tensors(aspects: Tensor, opinions: Tensor) -> Tensor:
+    aspects, opinions = expand_aspect_and_opinion(aspects, opinions)
+    return torch.cat([aspects, opinions], dim=-1)
+
+
 def create_embedding_mask_matrix(data: SpanCreatorOutput) -> Tensor:
     diff_from = torch.tensor([CreatedSpanCodes.NOT_RELEVANT]).to(data.aspects_agg_emb)
     relevant_elements: Tensor = _create_bool_mask(data, diff_from=diff_from)

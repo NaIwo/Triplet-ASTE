@@ -80,7 +80,7 @@ class BaseTripletExtractorModel(BaseModel):
         numerator: Tensor = sim * model_out.loss_mask
 
         negatives: Tensor = sim * (~model_out.loss_mask)
-        denominator: Tensor = torch.sum(negatives, dim=TripletDimensions.ASPECT, keepdim=True)
+        denominator: Tensor = torch.sum(negatives, dim=TripletDimensions.OPINION, keepdim=True)
         denominator = numerator + denominator
 
         loss: Tensor = numerator / denominator

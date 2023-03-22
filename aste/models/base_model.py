@@ -42,13 +42,11 @@ class BaseModel(pl.LightningModule):
 
     def validation_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> Optional[STEP_OUTPUT]:
         model_out: BaseModelOutput = self.forward(batch)
+        self.update_metrics(model_out)
         loss: ModelLoss = self.get_loss(model_out)
 
         self.log_loss(loss, prefix='val', on_epoch=True, on_step=False)
-        return {'loss': loss.full_loss, 'model_out': model_out}
-
-    def validation_step_end(self, outputs) -> None:
-        self.update_metrics(outputs['model_out'])
+        return loss.full_loss
 
     def on_validation_epoch_end(self, *args, **kwargs) -> None:
         metrics: ModelMetric = self.get_metrics_and_reset()
@@ -56,13 +54,11 @@ class BaseModel(pl.LightningModule):
 
     def test_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> Optional[STEP_OUTPUT]:
         model_out: BaseModelOutput = self.forward(batch)
+        self.update_metrics(model_out)
         loss: ModelLoss = self.get_loss(model_out)
 
         self.log_loss(loss=loss, prefix='test', on_epoch=True, on_step=False)
-        return {'loss': loss.full_loss, 'model_out': model_out}
-
-    def test_step_end(self, outputs) -> None:
-        self.update_metrics(outputs['model_out'])
+        return loss.full_loss
 
     def on_test_epoch_end(self, *args, **kwargs) -> None:
         metrics: ModelMetric = self.get_metrics_and_reset()

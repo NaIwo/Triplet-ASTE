@@ -29,6 +29,8 @@ class AttentionTripletExtractorModel(BaseTripletExtractorModel):
         neurons: List = [input_dim, input_dim // 2, input_dim // 4, 1]
         self.value = sequential_blocks(neurons=neurons, device=self.device)
 
+        self.softmax = torch.nn.Softmax(dim=-1)
+
     def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:
         queries = self.query(data_input.aspects_agg_emb)
         keys = self.key(data_input.opinions_agg_emb)
@@ -36,7 +38,7 @@ class AttentionTripletExtractorModel(BaseTripletExtractorModel):
 
         matrix: Tensor = torch.matmul(queries, keys.transpose(-1, -2)) / torch.sqrt(
             torch.tensor(keys.shape[-1], dtype=torch.float32))
-        matrix = F.softmax(matrix)
+        matrix = self.softmax(matrix)
         matrix = torch.matmul(matrix, values)
         matrix = F.sigmoid(matrix)
 

@@ -35,12 +35,12 @@ class TripletModel(BaseModel):
         super(TripletModel, self).__init__(model_name, config=config)
 
         self.emb_layer: BaseEmbedding = TransformerWithAggregation(config=config)
-        self.span_creator: BaseModel = SpanCreatorModel(input_dim=self.emb_layer.embedding_dim, config=config)#, extend_ranges=[[-1, 0], [1, 0], [0, -1], [0, 1])
+        self.span_creator: BaseModel = SpanCreatorModel(input_dim=self.emb_layer.embedding_dim, config=config)#, extend_ranges=[[-1, 0], [1, 0]])
         self.aggregator: BaseAggregator = EndPointAggregator(input_dim=self.emb_layer.embedding_dim, config=config)
         self.sentiment_extender: BaseModel = EmbeddingsExtenderModel(input_dim=self.aggregator.output_dim,
                                                                      config=config)
         # self.span_classifier: BaseModel = SpanClassifierModel(input_dim=self.aggregator.output_dim, config=config)
-        self.triplets_extractor: BaseModel = MetricTripletExtractorModel(
+        self.triplets_extractor: BaseModel = NeuralTripletExtractorModel(
             config=config, input_dim=self.aggregator.output_dim
         )
 
@@ -103,20 +103,21 @@ class TripletModel(BaseModel):
 
     def validation_step(self, batch: Batch, batch_idx: int, *args, **kwargs) -> Optional[STEP_OUTPUT]:
         model_out: ModelOutput = self.forward(batch)
+        self.update_metrics(model_out)
         loss: ModelLoss = self.get_loss(model_out)
 
         mt = model_out.triplet_results
         similarity = float((mt.features * mt.loss_mask).sum() / mt.loss_mask.sum())
         non_similarity = float((mt.features * (~mt.loss_mask)).sum() / (~mt.loss_mask).sum())
 
-        self.log('val_similarity', similarity, on_epoch=True, on_step=True, prog_bar=False,
+        self.log('val_similarity', similarity, on_epoch=True, on_step=False, prog_bar=False,
                  batch_size=self.config['general-training']['batch-size'], logger=True, sync_dist=True)
-        self.log('val_non-similarity', non_similarity, on_epoch=True, on_step=True, prog_bar=False,
+        self.log('val_non-similarity', non_similarity, on_epoch=True, on_step=False, prog_bar=False,
                  batch_size=self.config['general-training']['batch-size'], logger=True, sync_dist=True)
 
         self.log_loss(loss, prefix='val', on_epoch=True, on_step=False)
 
-        return {'loss': loss.full_loss, 'model_out': model_out}
+        return loss.full_loss
 
     def log_loss(self, loss: ModelLoss, prefix: str = 'train', on_epoch: bool = True, on_step: bool = False) -> None:
         self.log(f"{prefix}_loss", loss.full_loss, on_epoch=on_epoch, prog_bar=True, on_step=on_step,
@@ -129,7 +130,7 @@ class TripletModel(BaseModel):
                      )
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.get_params_and_lr(), lr=1e-5)
+        return torch.optim.AdamW(self.get_params_and_lr(), lr=1e-5)
 
     def get_params_and_lr(self) -> List[Dict]:
         return [

@@ -1,6 +1,6 @@
 general-training:
   device: cuda # {cpu vs gpu}
-  batch-size: 8
+  batch-size: 64
   precision: 32
   include-sub-words-info-in-mask: False
 dataset:
@@ -15,12 +15,12 @@ model:
     learning-rate: 0.00001
     source: microsoft/deberta-base
   span-creator:
-    loss-weight: 1.0
+    loss-weight: 2.0
   span-classifier:
     loss-weight: 0
   triplet-extractor:
-    loss-weight: 0
-    threshold: 0.65
+    loss-weight: 1.5
+    threshold: 0.5
 encoder:
   transformer:
     source: microsoft/deberta-base
