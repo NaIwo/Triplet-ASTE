@@ -260,20 +260,60 @@ class SampleTripletOutput(BaseModelOutput):
             self,
             aspect_ranges: Tensor,
             opinion_ranges: Tensor,
-            sentiments: Tensor,
             sentence: Sentence,
+            pred_sentiments: Optional[Tensor] = None,
+            true_sentiments: Optional[Tensor] = None,
+            features: Optional[Tensor] = None,
+            batch: Optional[Dict[str, Tensor]] = None,
     ):
-        super().__init__()
+        super().__init__(batch, features)
         self.sentence: Sentence = sentence
         self.triplets: List[Triplet] = list()
 
-        for aspect_range, opinion_range, sentiment in zip(aspect_ranges, opinion_ranges, sentiments):
+        self.aspect_ranges = aspect_ranges
+        self.opinion_ranges = opinion_ranges
+
+        if pred_sentiments is None:
+            pred_sentiments = torch.full(
+                aspect_ranges.shape[0:1],
+                ASTELabels.NOT_RELEVANT.value
+            ).to(aspect_ranges.device)
+        if true_sentiments is None:
+            true_sentiments = torch.full(
+                aspect_ranges.shape[0:1],
+                ASTELabels.NOT_RELEVANT.value
+            ).to(aspect_ranges.device)
+
+        self.pred_sentiments = pred_sentiments
+        self.true_sentiments = true_sentiments
+
+        self.construct_triplets()
+
+    def construct_triplets(self):
+        self.triplets: List[Triplet] = list()
+        for aspect_range, opinion_range, s in zip(self.aspect_ranges, self.opinion_ranges, self.pred_sentiments):
+            if s == ASTELabels.NOT_RELEVANT.value or s == ASTELabels.NOT_PAIR.value:
+                continue
             triplet: Triplet = Triplet(
-                aspect_span=construct_predicted_spans(aspect_range.unsqueeze(0), sentence)[0],
-                opinion_span=construct_predicted_spans(opinion_range.unsqueeze(0), sentence)[0],
-                sentiment=ASTELabels(int(sentiment)).name
+                aspect_span=construct_predicted_spans(aspect_range.unsqueeze(0), self.sentence)[0],
+                opinion_span=construct_predicted_spans(opinion_range.unsqueeze(0), self.sentence)[0],
+                sentiment=ASTELabels(int(s)).name
             )
             self.triplets.append(triplet)
+
+    def __repr__(self):
+        return ' || '.join([str(t) for t in self.triplets])
+
+    def copy(self):
+        return SampleTripletOutput(
+            aspect_ranges=self.aspect_ranges.clone(),
+            opinion_ranges=self.opinion_ranges.clone(),
+            sentence=self.sentence,
+            pred_sentiments=self.pred_sentiments.clone() if self.pred_sentiments is not None else None,
+            true_sentiments=self.true_sentiments.clone() if self.true_sentiments is not None else None,
+            features=self.features.clone() if self.features is not None else None,
+            batch=self.batch
+        )
 
 
 class TripletModelOutput(BaseModelOutput):
@@ -293,6 +333,30 @@ class TripletModelOutput(BaseModelOutput):
 
     def number_of_triplets(self) -> int:
         return sum(len(sample.triplets) for sample in self.triplets)
+
+    def get_predicted_sentiments(self) -> Tensor:
+        return torch.cat([sample.pred_sentiments for sample in self.triplets])
+
+    def get_true_sentiments(self) -> Tensor:
+        return torch.cat([sample.true_sentiments for sample in self.triplets])
+
+    def get_features(self) -> Tensor:
+        return torch.cat([sample.features for sample in self.triplets])
+
+    def get_triplets(self) -> List[List[Triplet]]:
+        return [sample.triplets for sample in self.triplets]
+
+    def copy(self):
+        return TripletModelOutput(
+            batch=self.batch,
+            triplets=self.copy_triplets(),
+            similarities=self.features.clone(),
+            true_predicted_mask=self.true_predicted_mask.clone(),
+            loss_mask=self.loss_mask.clone(),
+        )
+
+    def copy_triplets(self):
+        return [sample.copy() for sample in self.triplets]
 
 
 class ClassificationModelOutput(BaseModelOutput):
@@ -320,12 +384,29 @@ class ModelOutput(BaseModelOutput):
     def __init__(
             self,
             batch: Batch,
-            span_creator_output: SpanCreatorOutput,
-            triplet_results: TripletModelOutput,
-            span_classification_output: Optional[ClassificationModelOutput] = None
+            **kwargs
+    ):
+        super().__init__(batch=batch)
+        self.outputs = kwargs
+
+    def __getattr__(self, item):
+        return self.outputs[item]
+
+
+class FinalTriplets(BaseModelOutput):
+    def __init__(
+            self,
+            batch: Batch,
+            pred_triplets: List[List[Triplet]]
     ):
         super().__init__(batch=batch)
 
-        self.span_creator_output: SpanCreatorOutput = span_creator_output
-        self.triplet_results: TripletModelOutput = triplet_results
-        self.span_classification_output: Optional[ClassificationModelOutput] = span_classification_output
+        self.pred_triplets: List[List[Triplet]] = pred_triplets
+
+        self.true_triplets = []
+        for sample in batch:
+            self.true_triplets.append(sample.sentence_obj[0].triplets)
+
+    def __repr__(self):
+        return ' || '.join([str(t) for t in self.pred_triplets])
+

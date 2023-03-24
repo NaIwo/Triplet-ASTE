@@ -1,5 +1,5 @@
 from .losses import ModelLoss
-from .metrics import ModelMetric
+from .metrics import ModelMetric, FinalMetric
 from .outputs import (
     BaseModelOutput,
     ModelOutput,
@@ -9,4 +9,5 @@ from .outputs import (
     SampleTripletOutput,
     TripletModelOutput,
     ClassificationModelOutput,
+    FinalTriplets
 )

@@ -83,7 +83,7 @@ def get_selected_metrics(
         return [
             Precision(num_classes=num_classes, task=task, ignore_index=ignore_index),
             Recall(num_classes=num_classes, task=task, ignore_index=ignore_index),
-            Accuracy(num_classes=num_classes, task=task, ignore_index=ignore_index),
-            FBetaScore(num_classes=num_classes, task=task, beta=0.5, ignore_index=ignore_index),
+            # Accuracy(num_classes=num_classes, task=task, ignore_index=ignore_index),
+            # FBetaScore(num_classes=num_classes, task=task, beta=0.5, ignore_index=ignore_index),
             F1Score(num_classes=num_classes, task=task, ignore_index=ignore_index)
         ]

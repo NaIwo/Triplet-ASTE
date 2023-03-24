@@ -86,13 +86,39 @@ def _create_final_mask(data: SpanCreatorOutput, final_mask: Tensor) -> Tensor:
     for sample_aspects, sample_opinions, mask in zip(data.aspects, data.opinions, final_mask):
         temp_mask: Tensor = torch.zeros_like(mask).bool()
 
-        a_idx: Tensor = sample_aspects.mapping_indexes
-        o_idx: Tensor = sample_opinions.mapping_indexes
-        a_idx = a_idx[a_idx >= 0].repeat(sample_opinions.repeated)
-        o_idx = o_idx[o_idx >= 0]
+        a_idx, o_idx = _get_a_o_indexes(sample_aspects, sample_opinions)
         if TripletDimensions.ASPECT == 1:
             temp_mask[..., a_idx, o_idx] = True
         else:
             temp_mask[..., o_idx, a_idx] = True
         mask &= temp_mask
     return final_mask
+
+
+def create_sentiment_matrix(data: SpanCreatorOutput) -> Tensor:
+    matrix = create_embedding_mask_matrix(data).to(torch.int)
+    sample_aspects: SpanInformationOutput
+    sample_opinions: SpanInformationOutput
+    for sample_aspects, sample_opinions, mt in zip(data.aspects, data.opinions, matrix):
+        a_idx, o_idx = _get_a_o_indexes(sample_aspects, sample_opinions)
+        sentiments = sample_opinions.sentiments
+        mt -= 1
+        sentiments = sentiments[sentiments > 0]
+        if TripletDimensions.ASPECT == 1:
+            mt[..., a_idx, o_idx] = sentiments.to(torch.int)
+        else:
+            mt[..., o_idx, a_idx] = sentiments.to(torch.int)
+    return matrix
+
+
+def _get_a_o_indexes(
+    sample_aspects: SpanInformationOutput,
+    sample_opinions: SpanInformationOutput
+) -> Tuple[Tensor, Tensor]:
+
+    a_idx: Tensor = sample_aspects.mapping_indexes
+    o_idx: Tensor = sample_opinions.mapping_indexes
+    num_repeated: int = sample_opinions.repeated if sample_opinions.repeated is not None else 1
+    a_idx = a_idx[a_idx >= 0].repeat(num_repeated)
+    o_idx = o_idx[o_idx >= 0]
+    return a_idx, o_idx

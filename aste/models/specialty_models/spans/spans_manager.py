@@ -52,5 +52,5 @@ class SpanInformationManager:
         elif end_idx >= b_idx:
             self.span_ranges += [span_range]
             self.span_creation_info += [CreatedSpanCodes.PREDICTED_FALSE]
-            self.sentiments += [ASTELabels.NOT_RELEVANT]
+            self.sentiments += [ASTELabels.NOT_PAIR]
             self.mapping_indexes += [-1]

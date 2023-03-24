@@ -53,26 +53,7 @@ class BaseTripletExtractorModel(BaseModel):
         raise NotImplementedError
 
     def get_triplets_from_matrix(self, matrix: Tensor, data_input: SpanCreatorOutput) -> List[SampleTripletOutput]:
-        triplets: List = list()
-
-        sample: Tensor
-        sample_aspects: SpanInformationOutput
-        sample_opinions: SpanInformationOutput
-        for sample, sample_aspects, sample_opinions in zip(matrix, data_input.aspects, data_input.opinions):
-            significant: Tensor = self.threshold_data(sample).nonzero()
-            a_ranges: Tensor = sample_aspects.span_range[significant[:, 0]]
-            o_ranges: Tensor = sample_opinions.span_range[significant[:, 1]]
-            sentiments: Tensor = sample_opinions.sentiments[significant[:, 1]]
-            triplets.append(
-                SampleTripletOutput(
-                    aspect_ranges=a_ranges,
-                    opinion_ranges=o_ranges,
-                    sentiments=sentiments,
-                    sentence=sample_opinions.sentence
-                )
-            )
-
-        return triplets
+        raise NotImplementedError
 
     def get_loss(self, model_out: TripletModelOutput) -> ModelLoss:
         sim: Tensor = torch.exp(model_out.features)
@@ -106,7 +87,7 @@ class BaseTripletExtractorModel(BaseModel):
         self.final_metrics.update(tp=tp, tp_fp=tp_fp, tp_fn=tp_fn)
 
     def threshold_data(self, data: Tensor) -> Tensor:
-        return data >= self.config['model']['triplet-extractor']['threshold']
+        return data > self.config['model']['triplet-extractor']['threshold']
 
     def get_metrics(self) -> ModelMetric:
         return ModelMetric(

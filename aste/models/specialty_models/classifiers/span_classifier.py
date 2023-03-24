@@ -69,8 +69,8 @@ class SpanClassifierModel(BaseModel):
             batch=data_input.batch,
             aspect_features=aspects,
             opinion_features=opinions,
-            aspect_predictions=aspect_predictions.squeeze(dim=-1),
-            opinion_predictions=opinion_predictions.squeeze(dim=-1),
+            aspect_predictions=aspect_predictions,
+            opinion_predictions=opinion_predictions,
             aspect_labels=aspect_labels,
             opinion_labels=opinion_labels
         )
@@ -85,8 +85,8 @@ class SpanClassifierModel(BaseModel):
         return labels
 
     def get_loss(self, model_out: ClassificationModelOutput) -> ModelLoss:
-        loss = self.loss(model_out.aspect_predictions.view([-1]), model_out.aspect_labels.view([-1]))
-        loss += self.loss(model_out.opinion_predictions.view([-1]), model_out.opinion_labels.view([-1]))
+        loss = self.loss(model_out.aspect_predictions, model_out.aspect_labels)
+        loss += self.loss(model_out.opinion_predictions, model_out.opinion_labels)
 
         full_loss = ModelLoss(
             config=self.config,

@@ -1,6 +1,7 @@
-from typing import List, Optional, Dict
+from typing import List, Optional
 
 import torch
+from torch import Tensor
 from torch.nn import Sequential
 
 
@@ -17,7 +18,7 @@ def sequential_blocks(
     for idx in range(len(neurons[:-1 - int(is_last)])):
         blocks.append(
             Sequential(
-                torch.nn.LayerNorm(neurons[idx]),
+                # torch.nn.LayerNorm(neurons[idx]),
                 torch.nn.Linear(neurons[idx], neurons[idx + 1]),
                 torch.nn.ReLU(),
                 torch.nn.Dropout(0.1)
@@ -29,3 +30,7 @@ def sequential_blocks(
         )
 
     return blocks.to(device)
+
+
+def scale_scores(scores: Tensor) -> Tensor:
+    return torch.clamp((scores + 1.) / 2., min=0., max=1.)

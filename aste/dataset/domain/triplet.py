@@ -21,6 +21,9 @@ class Triplet:
             sentiment=triplet_info[2]
         )
 
+    def __hash__(self):
+        return hash(self.__str__())
+
     def __str__(self) -> str:
         return str({
             'aspect span': self.aspect_span,

@@ -225,13 +225,13 @@ class Batch:
 
     def __getitem__(self, item: int):
         return Batch(
-            sentence_obj=[self.sentence_obj[self.num]],
-            sentence=self.sentence[self.num].unsqueeze(0),
-            aspect_spans=self.aspect_spans[self.num].unsqueeze(0),
-            opinion_spans=self.opinion_spans[self.num].unsqueeze(0),
-            sentiments=self.sentiments[self.num].unsqueeze(0),
-            chunk_label=self.chunk_label[self.num].unsqueeze(0),
-            sub_words_masks=self.sub_words_mask[self.num].unsqueeze(0),
-            mask=self.mask[self.num].unsqueeze(0),
-            emb_mask=self.emb_mask[self.num].unsqueeze(0)
+            sentence_obj=[self.sentence_obj[item]],
+            sentence=self.sentence[item].unsqueeze(0),
+            aspect_spans=self.aspect_spans[item].unsqueeze(0),
+            opinion_spans=self.opinion_spans[item].unsqueeze(0),
+            sentiments=self.sentiments[item].unsqueeze(0),
+            chunk_label=self.chunk_label[item].unsqueeze(0),
+            sub_words_masks=self.sub_words_mask[item].unsqueeze(0),
+            mask=self.mask[item].unsqueeze(0),
+            emb_mask=self.emb_mask[item].unsqueeze(0)
         )

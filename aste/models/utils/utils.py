@@ -14,3 +14,5 @@ def construct_predicted_spans(span_range: Tensor, sentence: Sentence) -> List[Sp
         ]
         spans.append(Span.from_range(s_range, sentence.sentence))
     return spans
+
+

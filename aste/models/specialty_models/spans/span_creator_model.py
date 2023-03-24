@@ -2,11 +2,9 @@ from typing import List, Optional, Dict, Tuple
 
 import torch
 from torch import Tensor
-from torch.nn import Sequential
 from torchmetrics import MetricCollection
 
 from .spans_manager import SpanInformationManager
-from ..utils import sequential_blocks
 from ...outputs.outputs import SpanInformationOutput, SpanCreatorOutput
 from ...utils.const import CreatedSpanCodes
 from ....dataset.domain import SpanCode
@@ -41,9 +39,9 @@ class SpanCreatorModel(BaseModel):
 
         self.input_dim: int = input_dim
 
-        self.crf = CRF(num_tags=5, batch_first=True).to(self.device)
+        self.crf = CRF(num_tags=4, batch_first=True).to(self.device)
         self.linear_layer = torch.nn.Linear(input_dim, input_dim // 2)
-        self.final_layer = torch.nn.Linear(input_dim // 2, 5)
+        self.final_layer = torch.nn.Linear(input_dim // 2, 4)
 
     def forward(self, data_input: BaseModelOutput) -> SpanCreatorOutput:
         features: Tensor = self.get_features(data_input.features)
