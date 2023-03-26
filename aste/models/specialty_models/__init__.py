@@ -11,5 +11,6 @@ from .triplets.sentiment_triplets import (
     MetricTripletExtractorModel,
     AttentionTripletExtractorModel,
     NeuralTripletExtractorModel,
-    BaseSentimentTripletExtractorModel
+    BaseSentimentTripletExtractorModel,
+    NeuralCrossEntropyExtractorModel
 )

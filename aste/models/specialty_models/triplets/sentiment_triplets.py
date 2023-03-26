@@ -3,23 +3,25 @@ from typing import Dict, List
 import torch
 from torch import Tensor
 from torch.nn import Sequential
+import torch.nn.functional as F
 
 from .base_triplets_extractor import BaseTripletExtractorModel
 from ..utils import scale_scores
 from ..utils import sequential_blocks
 from ...outputs import (
-    SpanCreatorOutput
-)
-from ...outputs import (
     SpanInformationOutput,
-    SampleTripletOutput
+    SpanCreatorOutput,
+    SampleTripletOutput,
+    TripletModelOutput
 )
 from ...utils.triplet_utils import (
-    create_embeddings_matrix_by_concat_tensors,
-    create_embedding_mask_matrix
+    create_embeddings_matrix_by_concat_tensors
 )
 from ...utils.triplet_utils import (
     expand_aspect_and_opinion
+)
+from ....models.outputs import (
+    ModelLoss
 )
 
 
@@ -86,8 +88,8 @@ class MetricTripletExtractorModel(BaseSentimentTripletExtractorModel):
 
         matrix: Tensor = self.similarity_metric(aspects, opinions)
         matrix = scale_scores(matrix)
-        mask: Tensor = create_embedding_mask_matrix(data_input)
-        return matrix * mask
+
+        return matrix
 
 
 class NeuralTripletExtractorModel(BaseSentimentTripletExtractorModel):
@@ -113,11 +115,39 @@ class NeuralTripletExtractorModel(BaseSentimentTripletExtractorModel):
         opinions = self.opinion_net(data_input.opinions_agg_emb)
 
         matrix: Tensor = create_embeddings_matrix_by_concat_tensors(aspects, opinions)
-        mask: Tensor = create_embedding_mask_matrix(data_input)
 
         matrix = self.similarity(matrix)
 
-        return matrix.squeeze(-1) * mask
+        return matrix.squeeze(-1)
+
+
+class NeuralCrossEntropyExtractorModel(NeuralTripletExtractorModel):
+    def __init__(self, input_dim: int,
+                 config: Dict,
+                 model_name: str = 'Neural Cross Entropy Extractor Model',
+                 *args, **kwargs
+                 ):
+        super(NeuralCrossEntropyExtractorModel, self).__init__(input_dim=input_dim, model_name=model_name,
+                                                               config=config)
+
+        self.loss = torch.nn.CrossEntropyLoss(ignore_index=-1)
+
+    def get_loss(self, model_out: TripletModelOutput) -> ModelLoss:
+        preds = model_out.features.view(-1).unsqueeze(-1)
+        preds = torch.cat([torch.ones_like(preds) - preds, preds], dim=-1)
+
+        labels = model_out.loss_mask.view(-1).to(torch.long)
+        labels = torch.where(model_out.pad_mask.view(-1), labels, torch.tensor(-1).to(self.device))
+
+        loss = self.loss(preds, labels)
+        full_loss = ModelLoss(
+            config=self.config,
+            losses={
+                'triplet_extractor_loss': loss * self.config['model']['triplet-extractor'][
+                    'loss-weight'] * self.trainable,
+            }
+        )
+        return full_loss
 
 
 class AttentionTripletExtractorModel(BaseSentimentTripletExtractorModel):
@@ -147,5 +177,4 @@ class AttentionTripletExtractorModel(BaseSentimentTripletExtractorModel):
         matrix = torch.matmul(matrix, values)
         matrix = F.sigmoid(matrix)
 
-        mask: Tensor = create_embedding_mask_matrix(data_input)
-        return matrix * mask
+        return matrix

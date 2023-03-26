@@ -3,11 +3,11 @@ from typing import Optional
 
 from .base_model import BaseModel
 from .base_triplet_model import BaseTripletModel
-
 from .model_elements.span_aggregators import (
     BaseAggregator,
     EndPointAggregator
 )
+from .model_elements.embeddings import BaseEmbedding, TransformerWithAggregation
 from .outputs import (
     BaseModelOutput,
     SpanCreatorOutput,
@@ -23,7 +23,6 @@ from .specialty_models import (
     MetricTripletExtractorModel,
     SpanClassifierModel
 )
-
 from .specialty_models import (
     SpanCreatorModel,
     NonSentimentMetricTripletExtractorModel,
@@ -36,8 +35,7 @@ class OpinionBasedTripletModel(BaseTripletModel):
     def __init__(self, model_name='Opinion Based Triplet Model', config: Optional[Dict] = None, *args, **kwargs):
         super(OpinionBasedTripletModel, self).__init__(model_name, config=config)
 
-        self.span_creator: BaseModel = SpanCreatorModel(input_dim=self.emb_layer.embedding_dim,
-                                                        config=config)  # , extend_ranges=[[-1, 0], [1, 0]])
+        self.span_creator: BaseModel = SpanCreatorModel(input_dim=self.emb_layer.embedding_dim, config=config)
         self.aggregator: BaseAggregator = EndPointAggregator(input_dim=self.emb_layer.embedding_dim, config=config)
         self.sentiment_extender: BaseModel = EmbeddingsExtenderModel(input_dim=self.aggregator.output_dim,
                                                                      config=config)
@@ -97,14 +95,62 @@ class OpinionBasedTripletModel(BaseTripletModel):
         ]
 
 
+class OpinionBasedTripletTwoEmbeddersModel(OpinionBasedTripletModel):
+    def __init__(self, model_name='Opinion Based Triplet Model with Two Embedders',
+                 config: Optional[Dict] = None, *args, **kwargs):
+        super(OpinionBasedTripletTwoEmbeddersModel, self).__init__(model_name, config=config)
+        self.matrix_emb_layer: BaseEmbedding = TransformerWithAggregation(config=config)
+
+    def forward(self, batch: Batch) -> ModelOutput:
+        batch.to_device(self.device)
+        emb_output: BaseModelOutput = self.emb_layer(batch)
+        matrix_emb_output: BaseModelOutput = self.matrix_emb_layer(batch)
+
+        span_creator_output: SpanCreatorOutput = self.span_creator(emb_output)
+
+        span_creator_output.aspects_agg_emb = self.aggregator.aggregate(
+            matrix_emb_output.features,
+            span_creator_output.get_aspect_span_predictions()
+        )
+        span_creator_output.opinions_agg_emb = self.aggregator.aggregate(
+            matrix_emb_output.features,
+            span_creator_output.get_opinion_span_predictions()
+        )
+        extended_opinions: SentimentModelOutput = self.sentiment_extender(span_creator_output.opinions_agg_emb)
+        span_creator_output = span_creator_output.extend_opinions_with_sentiments(extended_opinions)
+
+        triplet_output: TripletModelOutput = self.triplets_extractor(span_creator_output)
+
+        final_triplet = FinalTriplets(
+            batch=batch,
+            pred_triplets=triplet_output.get_triplets(),
+        )
+
+        return ModelOutput(
+            batch=batch,
+            span_creator_output=span_creator_output,
+            triplet_results=triplet_output,
+            final_triplet=final_triplet
+        )
+
+    def get_params_and_lr(self) -> List[Dict]:
+        return [
+            {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['learning-rate']},
+            {'params': self.matrix_emb_layer.parameters(), 'lr': self.config['model']['transformer']['learning-rate']},
+            {'params': self.span_creator.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.sentiment_extender.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['learning-rate']},
+        ]
+
+
 class OpinionBasedTripletModelClassifier(BaseTripletModel):
     def __init__(self,
                  model_name='Opinion Based Triplet Model with Classifier',
                  config: Optional[Dict] = None, *args, **kwargs):
         super(OpinionBasedTripletModelClassifier, self).__init__(model_name, config=config)
 
-        self.span_creator: BaseModel = SpanCreatorModel(input_dim=self.emb_layer.embedding_dim,
-                                                        config=config)  # , extend_ranges=[[-1, 0], [1, 0]])
+        self.span_creator: BaseModel = SpanCreatorModel(input_dim=self.emb_layer.embedding_dim, config=config)
         self.aggregator: BaseAggregator = EndPointAggregator(input_dim=self.emb_layer.embedding_dim, config=config)
         self.sentiment_extender: BaseModel = EmbeddingsExtenderModel(input_dim=self.aggregator.output_dim,
                                                                      config=config)
@@ -170,7 +216,7 @@ class SentimentPredictorTripletModel(BaseTripletModel):
         super(SentimentPredictorTripletModel, self).__init__(model_name, config=config)
 
         self.span_creator: BaseModel = SpanCreatorModel(
-            input_dim=self.emb_layer.embedding_dim, config=config#, extend_ranges=[[-1, 0], [1, 0], [0, 1], [0, -1]]
+            input_dim=self.emb_layer.embedding_dim, config=config
         )
         self.aggregator: BaseAggregator = EndPointAggregator(input_dim=self.emb_layer.embedding_dim, config=config)
         self.triplets_extractor: BaseModel = NonSentimentMetricTripletExtractorModel(
@@ -229,6 +275,57 @@ class SentimentPredictorTripletModel(BaseTripletModel):
     def get_params_and_lr(self) -> List[Dict]:
         return [
             {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['learning-rate']},
+            {'params': self.span_creator.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.sentiment_predictor.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['learning-rate']},
+        ]
+
+
+class SentimentPredictorTripletTwoEmbeddersModel(SentimentPredictorTripletModel):
+    def __init__(self, model_name='Sentiment Predictor Triplet Model with Two Embedders',
+                 config: Optional[Dict] = None, *args, **kwargs):
+        super(SentimentPredictorTripletTwoEmbeddersModel, self).__init__(model_name, config=config)
+
+        self.matrix_emb_layer: BaseEmbedding = TransformerWithAggregation(config=config)
+
+    def forward(self, batch: Batch) -> ModelOutput:
+        batch.to_device(self.device)
+        emb_output: BaseModelOutput = self.emb_layer(batch)
+        matrix_emb_output: BaseModelOutput = self.matrix_emb_layer(batch)
+
+        span_creator_output: SpanCreatorOutput = self.span_creator(emb_output)
+
+        span_creator_output.aspects_agg_emb = self.aggregator.aggregate(
+            matrix_emb_output.features,
+            span_creator_output.get_aspect_span_predictions()
+        )
+        span_creator_output.opinions_agg_emb = self.aggregator.aggregate(
+            matrix_emb_output.features,
+            span_creator_output.get_opinion_span_predictions()
+        )
+
+        triplet_output: TripletModelOutput = self.triplets_extractor(span_creator_output)
+
+        predictor_triplet_output: TripletModelOutput = self.sentiment_predictor(triplet_output)
+
+        final_triplet = FinalTriplets(
+            batch=batch,
+            pred_triplets=predictor_triplet_output.get_triplets(),
+        )
+
+        return ModelOutput(
+            batch=batch,
+            span_creator_output=span_creator_output,
+            triplet_results=triplet_output,
+            predictor_triplet_output=predictor_triplet_output,
+            final_triplet=final_triplet
+        )
+
+    def get_params_and_lr(self) -> List[Dict]:
+        return [
+            {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['learning-rate']},
+            {'params': self.matrix_emb_layer.parameters(), 'lr': self.config['model']['transformer']['learning-rate']},
             {'params': self.span_creator.parameters(), 'lr': self.config['model']['learning-rate']},
             {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['learning-rate']},
             {'params': self.sentiment_predictor.parameters(), 'lr': self.config['model']['learning-rate']},

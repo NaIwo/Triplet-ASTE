@@ -30,13 +30,17 @@ class SpanInformationManager:
         self.span_creation_info += [code] * true_spans.shape[0]
         self.sentiments += sample.sentiments[0][mask].tolist()
 
-    def extend_span_ranges(self, sample: Batch, extend_ranges: List[List[int]]) -> None:
+    def extend_span_ranges(self, sample: Batch, extend_ranges: List[List[int]], max_number: int = 1000) -> None:
         before: Callable = sample.sentence_obj[0].get_index_before_encoding
         after: Callable = sample.sentence_obj[0].get_index_after_encoding
 
+        span_ranges = self.span_ranges[:]
+
         begin: int
         end: int
-        for begin, end in self.span_ranges:
+        for begin, end in span_ranges:
+            if len(self.span_ranges) >= max_number:
+                return
             for shift_l, shift_r in extend_ranges:
                 self.add_predicted_information(
                     after(before(begin) + shift_l),

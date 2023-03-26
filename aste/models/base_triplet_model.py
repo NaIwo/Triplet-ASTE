@@ -55,9 +55,10 @@ class BaseTripletModel(BaseModel):
         loss: ModelLoss = self.get_loss(model_out)
 
         mt = model_out.triplet_results
+        reverse_loss_mask = (~mt.loss_mask) * mt.pad_mask
         similarity = float((mt.features * mt.loss_mask).sum() / mt.loss_mask.sum())
-        non_similarity = float((mt.features * ((~mt.loss_mask) & mt.true_predicted_mask)).sum() / ((
-                (~mt.loss_mask) & mt.true_predicted_mask).sum() + 1e-6))
+        non_similarity = float((mt.features * (reverse_loss_mask & mt.true_predicted_mask)).sum() / ((
+                reverse_loss_mask & mt.true_predicted_mask).sum() + 1e-6))
 
         self.log('val_similarity', similarity, on_epoch=True, on_step=False, prog_bar=False,
                  batch_size=self.config['general-training']['batch-size'], logger=True, sync_dist=True)

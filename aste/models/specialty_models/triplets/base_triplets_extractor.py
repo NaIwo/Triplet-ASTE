@@ -15,7 +15,8 @@ from ...utils.const import TripletDimensions
 from ...utils.triplet_utils import (
     create_mask_matrix_for_loss,
     create_mask_matrix_for_prediction,
-    get_true_predicted_mask
+    get_true_predicted_mask,
+    create_embedding_mask_matrix
 )
 from ....models.outputs import (
     ModelLoss,
@@ -33,6 +34,8 @@ class BaseTripletExtractorModel(BaseModel):
 
     def forward(self, data_input: SpanCreatorOutput) -> TripletModelOutput:
         matrix: Tensor = self._forward_embeddings(data_input)
+        pad_mask: Tensor = create_embedding_mask_matrix(data_input)
+        matrix = matrix * pad_mask
 
         loss_mask: Tensor = create_mask_matrix_for_loss(data_input)
         prediction_mask: Tensor = create_mask_matrix_for_prediction(data_input)
@@ -46,7 +49,8 @@ class BaseTripletExtractorModel(BaseModel):
             triplets=triplets,
             similarities=matrix,
             loss_mask=loss_mask,
-            true_predicted_mask=true_predicted_mask
+            true_predicted_mask=true_predicted_mask,
+            pad_mask=pad_mask
         )
 
     def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:
@@ -56,18 +60,22 @@ class BaseTripletExtractorModel(BaseModel):
         raise NotImplementedError
 
     def get_loss(self, model_out: TripletModelOutput) -> ModelLoss:
+        reverse_loss_mask = (~model_out.loss_mask) * model_out.pad_mask
+
         sim: Tensor = torch.exp(model_out.features)
 
         numerator: Tensor = sim * model_out.loss_mask
 
-        negatives: Tensor = sim * (~model_out.loss_mask)
+        negatives: Tensor = sim * reverse_loss_mask
         denominator: Tensor = torch.sum(negatives, dim=TripletDimensions.OPINION, keepdim=True)
         denominator = numerator + denominator
+        denominator += 1e-8
 
         loss: Tensor = numerator / denominator
         loss = torch.sum(loss, dim=[1, 2]) / torch.sum(model_out.loss_mask, dim=[1, 2])
         loss = -torch.log(loss)
         loss = torch.sum(loss) / self.config['general-training']['batch-size']
+
         full_loss = ModelLoss(
             config=self.config,
             losses={

@@ -5,6 +5,7 @@ from torch import Tensor
 from torchmetrics import MetricCollection
 
 from .spans_manager import SpanInformationManager
+from ..utils import sequential_blocks
 from ...outputs.outputs import SpanInformationOutput, SpanCreatorOutput
 from ...utils.const import CreatedSpanCodes
 from ....dataset.domain import SpanCode
@@ -35,13 +36,14 @@ class SpanCreatorModel(BaseModel):
 
         self.extend_ranges: Optional[List[List[int]]] = extend_ranges
         if extend_ranges is None:
-            self.extend_ranges = []
+            self.extend_ranges = [[-1, 0], [1, 0], [0, 1], [0, -1]]
 
         self.input_dim: int = input_dim
 
-        self.crf = CRF(num_tags=4, batch_first=True).to(self.device)
-        self.linear_layer = torch.nn.Linear(input_dim, input_dim // 2)
-        self.final_layer = torch.nn.Linear(input_dim // 2, 4)
+        self.crf = CRF(num_tags=5, batch_first=True).to(self.device)
+        neurons: List = [input_dim, input_dim // 2, input_dim // 4, input_dim // 8]
+        self.linear_layer = sequential_blocks(neurons, self.device, is_last=False)
+        self.final_layer = torch.nn.Linear(input_dim // 8, 5)
 
     def forward(self, data_input: BaseModelOutput) -> SpanCreatorOutput:
         features: Tensor = self.get_features(data_input.features)
@@ -94,8 +96,9 @@ class SpanCreatorModel(BaseModel):
 
         if not span_manager.span_ranges:
             span_manager.add_predicted_information(0, len(seq) - 1)
-        else:
-            span_manager.extend_span_ranges(sample, self.extend_ranges)
+        elif self.config['model']['span-creator']['extend-spans']:
+            max_number = self.config['model']['span-creator']['max-number-of-spans']
+            span_manager.extend_span_ranges(sample, self.extend_ranges, max_number=max_number)
 
         return SpanInformationOutput.from_span_manager(
             span_manager,

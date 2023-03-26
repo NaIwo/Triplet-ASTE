@@ -324,12 +324,14 @@ class TripletModelOutput(BaseModelOutput):
             similarities: Tensor,
             true_predicted_mask: Tensor,
             loss_mask: Tensor,
+            pad_mask: Tensor,
     ):
         super().__init__(batch=batch, features=similarities)
         self.triplets: List[SampleTripletOutput] = triplets
 
         self.true_predicted_mask: Tensor = true_predicted_mask
         self.loss_mask: Tensor = loss_mask
+        self.pad_mask: Tensor = pad_mask
 
     def number_of_triplets(self) -> int:
         return sum(len(sample.triplets) for sample in self.triplets)
@@ -353,6 +355,7 @@ class TripletModelOutput(BaseModelOutput):
             similarities=self.features.clone(),
             true_predicted_mask=self.true_predicted_mask.clone(),
             loss_mask=self.loss_mask.clone(),
+            pad_mask=self.pad_mask.clone(),
         )
 
     def copy_triplets(self):

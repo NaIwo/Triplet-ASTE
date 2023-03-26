@@ -12,7 +12,6 @@ from ...outputs import (
     SampleTripletOutput
 )
 from ...utils.triplet_utils import (
-    create_embedding_mask_matrix,
     expand_aspect_and_opinion,
     create_embeddings_matrix_by_concat_tensors,
     create_sentiment_matrix
@@ -97,5 +96,5 @@ class NonSentimentMetricTripletExtractorModel(BaseNonSentimentTripletExtractorMo
 
         matrix: Tensor = self.similarity_metric(aspects, opinions)
         matrix = scale_scores(matrix)
-        mask: Tensor = create_embedding_mask_matrix(data_input)
-        return matrix * mask
+
+        return matrix
