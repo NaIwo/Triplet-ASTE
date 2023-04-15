@@ -54,9 +54,9 @@ class ModelLoss:
         full_loss: Optional[Tensor] = None
         for loss_name, loss in self.losses.items():
             if full_loss is None:
-                full_loss = loss
+                full_loss = loss.clone()
             else:
-                full_loss += loss
+                full_loss += loss.clone()
 
         return full_loss
 

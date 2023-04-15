@@ -1,4 +1,5 @@
 from .classifiers.span_classifier import SpanClassifierModel
+from .classifiers.pairs_classifier import PairClassifierModel
 from .sentiments.sentiment_extender import EmbeddingsExtenderModel
 from .sentiments.sentiment_predictor import SentimentPredictor
 from .spans.span_creator_model import SpanCreatorModel
@@ -9,7 +10,6 @@ from .triplets.non_sentiment_triplets import (
 )
 from .triplets.sentiment_triplets import (
     MetricTripletExtractorModel,
-    AttentionTripletExtractorModel,
     NeuralTripletExtractorModel,
     BaseSentimentTripletExtractorModel,
     NeuralCrossEntropyExtractorModel

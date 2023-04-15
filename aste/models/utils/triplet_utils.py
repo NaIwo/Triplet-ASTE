@@ -28,7 +28,7 @@ def get_true_predicted_mask(data: SpanCreatorOutput) -> Tensor:
     equals_to = torch.tensor([CreatedSpanCodes.PREDICTED_TRUE]).to(data.aspects_agg_emb)
     true_elements = _create_bool_mask(data, equals_to=equals_to)
 
-    return true_elements
+    return _create_final_mask(data, true_elements)
 
 
 def create_mask_matrix_for_loss(data: SpanCreatorOutput) -> Tensor:

@@ -3,8 +3,8 @@ from typing import List, Callable
 import torch
 from torch import Tensor
 
-from ....dataset.domain import ASTELabels
 from ...utils.const import CreatedSpanCodes
+from ....dataset.domain import ASTELabels
 from ....dataset.reader import Batch
 
 
@@ -46,6 +46,10 @@ class SpanInformationManager:
                     after(before(begin) + shift_l),
                     after(before(end) + shift_r)
                 )
+
+    def add_span_manager(self, span_manager: 'SpanInformationManager') -> None:
+        for (b_idx, e_idx) in span_manager.span_ranges:
+            self.add_predicted_information(b_idx, e_idx)
 
     def add_predicted_information(self, b_idx: int, end_idx: int) -> None:
         span_range: List = [b_idx, end_idx]

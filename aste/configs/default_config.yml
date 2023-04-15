@@ -12,19 +12,25 @@ model:
   learning-rate: 0.0001
   add-true-spans: True
   transformer:
-    learning-rate: 0.00005
+    learning-rate: 0.00001
     source: microsoft/deberta-base
   span-creator:
-    extend-spans: False
+    extend-opinion-span-ranges: [[0, 1], [0, -1]]
+    extend-aspect-span-ranges: [[0, 1], [0, -1]]
     max-number-of-spans: 50
     loss-weight: 2.0
+    add-aspects-to-opinions: True
+    add-opinions-to-aspects: True
   span-classifier:
-    loss-weight: 0
-  triplet-extractor:
-    loss-weight: 3.0
-    threshold: 0.5
+    loss-weight: 1.0
+  pair-classifier:
+    loss-weight: 2.0
   sentiment-predictor:
     loss-weight: 2.0
+  triplet-extractor:
+    loss-weight: 2.0
+    threshold: 0.55
+    num-negatives: 5
 encoder:
   transformer:
     source: microsoft/deberta-base

@@ -21,7 +21,9 @@ from .outputs import (
 from .specialty_models import (
     EmbeddingsExtenderModel,
     MetricTripletExtractorModel,
-    SpanClassifierModel
+    SpanClassifierModel,
+    NeuralTripletExtractorModel,
+    PairClassifierModel
 )
 from .specialty_models import (
     SpanCreatorModel,
@@ -47,11 +49,11 @@ class OpinionBasedTripletModel(BaseTripletModel):
 
         self.model_with_losses = {
             self.span_creator: 'span_creator_output',
-            self.triplets_extractor: 'triplet_results'
+            self.triplets_extractor: 'triplet_output'
         }
         self.model_with_metrics = {
             self.span_creator: 'span_creator_output',
-            self.triplets_extractor: 'triplet_results',
+            self.triplets_extractor: 'triplet_output',
             self.final_metrics: 'final_triplet'
         }
 
@@ -81,7 +83,7 @@ class OpinionBasedTripletModel(BaseTripletModel):
         return ModelOutput(
             batch=batch,
             span_creator_output=span_creator_output,
-            triplet_results=triplet_output,
+            triplet_output=triplet_output,
             final_triplet=final_triplet
         )
 
@@ -129,7 +131,7 @@ class OpinionBasedTripletTwoEmbeddersModel(OpinionBasedTripletModel):
         return ModelOutput(
             batch=batch,
             span_creator_output=span_creator_output,
-            triplet_results=triplet_output,
+            triplet_output=triplet_output,
             final_triplet=final_triplet
         )
 
@@ -155,19 +157,25 @@ class OpinionBasedTripletModelClassifier(BaseTripletModel):
         self.sentiment_extender: BaseModel = EmbeddingsExtenderModel(input_dim=self.aggregator.output_dim,
                                                                      config=config)
         self.span_classifier: BaseModel = SpanClassifierModel(input_dim=self.aggregator.output_dim, config=config)
+        self.pair_classifier: BaseModel = PairClassifierModel(input_dim=self.aggregator.output_dim * 2, config=config)
         self.triplets_extractor: BaseModel = MetricTripletExtractorModel(
             config=config, input_dim=self.aggregator.output_dim
         )
 
+        self.final_metrics = FinalMetric()
+
         self.model_with_losses = {
             self.span_creator: 'span_creator_output',
-            self.triplets_extractor: 'triplet_results',
-            self.span_classifier: 'span_classifier_output'
+            self.triplets_extractor: 'triplet_output',
+            self.span_classifier: 'span_classifier_output',
+            self.pair_classifier: 'pair_output'
         }
         self.model_with_metrics = {
             self.span_creator: 'span_creator_output',
-            self.triplets_extractor: 'triplet_results',
-            self.span_classifier: 'span_classifier_output'
+            self.triplets_extractor: 'triplet_output',
+            self.pair_classifier: 'pair_output',
+            self.span_classifier: 'span_classifier_output',
+            self.final_metrics: 'final_triplet'
         }
 
     def forward(self, batch: Batch) -> ModelOutput:
@@ -188,16 +196,22 @@ class OpinionBasedTripletModelClassifier(BaseTripletModel):
 
         span_classifier_output: ClassificationModelOutput = self.span_classifier(span_creator_output)
 
-        span_creator_output.aspects_agg_emb = span_classifier_output.aspect_features
-        span_creator_output.opinions_agg_emb = span_classifier_output.opinion_features
-
         triplet_output: TripletModelOutput = self.triplets_extractor(span_creator_output)
+
+        pair_output = self.pair_classifier(triplet_output)
+
+        final_triplet = FinalTriplets(
+            batch=batch,
+            pred_triplets=pair_output.get_triplets(),
+        )
 
         return ModelOutput(
             batch=batch,
+            final_triplet=final_triplet,
             span_creator_output=span_creator_output,
-            triplet_results=triplet_output,
-            span_classification_output=span_classifier_output
+            triplet_output=triplet_output,
+            pair_output=pair_output,
+            span_classifier_output=span_classifier_output
         )
 
     def get_params_and_lr(self) -> List[Dict]:
@@ -206,6 +220,7 @@ class OpinionBasedTripletModelClassifier(BaseTripletModel):
             {'params': self.span_creator.parameters(), 'lr': self.config['model']['learning-rate']},
             {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['learning-rate']},
             {'params': self.span_classifier.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.pair_classifier.parameters(), 'lr': self.config['model']['learning-rate']},
             {'params': self.sentiment_extender.parameters(), 'lr': self.config['model']['learning-rate']},
             {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['learning-rate']},
         ]
@@ -222,6 +237,7 @@ class SentimentPredictorTripletModel(BaseTripletModel):
         self.triplets_extractor: BaseModel = NonSentimentMetricTripletExtractorModel(
             config=config, input_dim=self.aggregator.output_dim
         )
+        self.span_classifier: BaseModel = SpanClassifierModel(input_dim=self.aggregator.output_dim, config=config)
         self.sentiment_predictor: BaseModel = SentimentPredictor(
             input_dim=self.aggregator.output_dim * 2,
             config=config
@@ -231,12 +247,14 @@ class SentimentPredictorTripletModel(BaseTripletModel):
 
         self.model_with_losses = {
             self.span_creator: 'span_creator_output',
-            self.triplets_extractor: 'triplet_results',
+            self.span_classifier: 'span_classifier_output',
+            self.triplets_extractor: 'triplet_output',
             self.sentiment_predictor: 'predictor_triplet_output'
         }
         self.model_with_metrics = {
             self.span_creator: 'span_creator_output',
-            # self.triplets_extractor: 'triplet_results',
+            self.span_classifier: 'span_classifier_output',
+            self.triplets_extractor: 'triplet_output',
             self.sentiment_predictor: 'predictor_triplet_output',
             self.final_metrics: 'final_triplet'
         }
@@ -255,6 +273,8 @@ class SentimentPredictorTripletModel(BaseTripletModel):
             span_creator_output.get_opinion_span_predictions()
         )
 
+        span_classifier_output: ClassificationModelOutput = self.span_classifier(span_creator_output)
+
         triplet_output: TripletModelOutput = self.triplets_extractor(span_creator_output)
 
         predictor_triplet_output: TripletModelOutput = self.sentiment_predictor(triplet_output)
@@ -267,7 +287,8 @@ class SentimentPredictorTripletModel(BaseTripletModel):
         return ModelOutput(
             batch=batch,
             span_creator_output=span_creator_output,
-            triplet_results=triplet_output,
+            span_classifier_output=span_classifier_output,
+            triplet_output=triplet_output,
             predictor_triplet_output=predictor_triplet_output,
             final_triplet=final_triplet
         )
@@ -276,6 +297,7 @@ class SentimentPredictorTripletModel(BaseTripletModel):
         return [
             {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['learning-rate']},
             {'params': self.span_creator.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.span_classifier.parameters(), 'lr': self.config['model']['learning-rate']},
             {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['learning-rate']},
             {'params': self.sentiment_predictor.parameters(), 'lr': self.config['model']['learning-rate']},
             {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['learning-rate']},
@@ -305,6 +327,8 @@ class SentimentPredictorTripletTwoEmbeddersModel(SentimentPredictorTripletModel)
             span_creator_output.get_opinion_span_predictions()
         )
 
+        span_classifier_output: ClassificationModelOutput = self.span_classifier(span_creator_output)
+
         triplet_output: TripletModelOutput = self.triplets_extractor(span_creator_output)
 
         predictor_triplet_output: TripletModelOutput = self.sentiment_predictor(triplet_output)
@@ -317,8 +341,9 @@ class SentimentPredictorTripletTwoEmbeddersModel(SentimentPredictorTripletModel)
         return ModelOutput(
             batch=batch,
             span_creator_output=span_creator_output,
-            triplet_results=triplet_output,
+            triplet_output=triplet_output,
             predictor_triplet_output=predictor_triplet_output,
+            span_classifier_output=span_classifier_output,
             final_triplet=final_triplet
         )
 
@@ -330,4 +355,5 @@ class SentimentPredictorTripletTwoEmbeddersModel(SentimentPredictorTripletModel)
             {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['learning-rate']},
             {'params': self.sentiment_predictor.parameters(), 'lr': self.config['model']['learning-rate']},
             {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.span_classifier.parameters(), 'lr': self.config['model']['learning-rate']},
         ]

@@ -1,8 +1,8 @@
 from typing import Dict, List
 
 import torch
-from torch import Tensor
 
+from .classifier_utils import get_labels_for_task
 from ..utils import sequential_blocks
 from ...base_model import BaseModel
 from ...outputs import (
@@ -10,6 +10,7 @@ from ...outputs import (
     SpanCreatorOutput
 )
 from ...utils.const import CreatedSpanCodes
+from ....losses.dice_loss import DiceLoss
 from ....models.outputs import (
     ModelLoss,
     ModelMetric
@@ -31,62 +32,52 @@ class SpanClassifierModel(BaseModel):
             metrics=metrics
         )
 
-        self.loss = torch.nn.CrossEntropyLoss(ignore_index=CreatedSpanCodes.NOT_RELEVANT.value)
+        self.loss = DiceLoss(ignore_index=CreatedSpanCodes.NOT_RELEVANT.value, alpha=0.7, with_logits=False)
 
         neurons: List = [
             input_dim,
             input_dim // 2,
-            input_dim // 2,
-            input_dim
-        ]
-        self.aspect_net = sequential_blocks(neurons=neurons, is_last=False, device=self.device)
-        self.opinion_net = sequential_blocks(neurons=neurons, is_last=False, device=self.device)
-
-        neurons: List = [
-            input_dim,
             input_dim // 4,
+            input_dim // 8,
             1
         ]
-        self.prediction_net = sequential_blocks(neurons=neurons, device=self.device)
-        self.prediction_net.append(
-            torch.nn.Sigmoid()
-        )
+        self.aspect_net = sequential_blocks(neurons=neurons, is_last=True, device=self.device)
+        self.opinion_net = sequential_blocks(neurons=neurons, is_last=True, device=self.device)
+        self.aspect_net.append(torch.nn.Sigmoid())
+        self.opinion_net.append(torch.nn.Sigmoid())
 
     def forward(self, data_input: SpanCreatorOutput) -> ClassificationModelOutput:
-        aspects = self.aspect_net(data_input.aspects_agg_emb)
-        opinions = self.opinion_net(data_input.opinions_agg_emb)
-
-        aspect_predictions = self.prediction_net(aspects)
-        opinion_predictions = self.prediction_net(opinions)
+        aspect_predictions = self.aspect_net(data_input.aspects_agg_emb)
+        opinion_predictions = self.opinion_net(data_input.opinions_agg_emb)
 
         aspect_labels = data_input.get_aspect_span_creation_info()
-        aspect_labels = self.get_labels_for_task(aspect_labels)
+        aspect_labels = get_labels_for_task(aspect_labels)
 
         opinion_labels = data_input.get_opinion_span_creation_info()
-        opinion_labels = self.get_labels_for_task(opinion_labels)
+        opinion_labels = get_labels_for_task(opinion_labels)
 
         return ClassificationModelOutput(
             batch=data_input.batch,
-            aspect_features=aspects,
-            opinion_features=opinions,
             aspect_predictions=aspect_predictions,
             opinion_predictions=opinion_predictions,
             aspect_labels=aspect_labels,
             opinion_labels=opinion_labels
         )
 
-    @staticmethod
-    def get_labels_for_task(labels: Tensor) -> Tensor:
-        labels = labels.clone()
-        con = (labels == CreatedSpanCodes.ADDED_TRUE) | (labels == CreatedSpanCodes.PREDICTED_TRUE)
-        labels = torch.where(con, 1., labels)
-        con = (labels == CreatedSpanCodes.ADDED_FALSE) | (labels == CreatedSpanCodes.PREDICTED_FALSE)
-        labels = torch.where(con, 0., labels)
-        return labels
-
     def get_loss(self, model_out: ClassificationModelOutput) -> ModelLoss:
-        loss = self.loss(model_out.aspect_predictions, model_out.aspect_labels)
-        loss += self.loss(model_out.opinion_predictions, model_out.opinion_labels)
+        a_preds = torch.cat([
+            1 - model_out.aspect_predictions,
+            model_out.aspect_predictions
+        ], dim=-1).to(model_out.aspect_labels.device).flatten(0, 1)
+        o_preds = torch.cat([
+            1 - model_out.opinion_predictions,
+            model_out.opinion_predictions
+        ], dim=-1).to(model_out.opinion_labels.device).flatten(0, 1)
+
+        preds = torch.cat([a_preds, o_preds], dim=0)
+        true = torch.cat([model_out.aspect_labels.flatten(0, 1), model_out.opinion_labels.flatten(0, 1)], dim=0)
+
+        loss = self.loss(preds, true)
 
         full_loss = ModelLoss(
             config=self.config,

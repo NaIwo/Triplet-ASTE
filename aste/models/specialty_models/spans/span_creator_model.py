@@ -1,4 +1,5 @@
 from typing import List, Optional, Dict, Tuple
+from ast import literal_eval
 
 import torch
 from torch import Tensor
@@ -34,10 +35,6 @@ class SpanCreatorModel(BaseModel):
             metrics=get_selected_metrics(for_spans=True, dist_sync_on_step=True)
         )
 
-        self.extend_ranges: Optional[List[List[int]]] = extend_ranges
-        if extend_ranges is None:
-            self.extend_ranges = [[-1, 0], [1, 0], [0, 1], [0, -1]]
-
         self.input_dim: int = input_dim
 
         self.crf = CRF(num_tags=5, batch_first=True).to(self.device)
@@ -69,16 +66,25 @@ class SpanCreatorModel(BaseModel):
             offset: int = sample.sentence_obj[0].encoder.offset
             best_path[:offset] = SpanCode.NOT_SPLIT
             best_path[sum(sample.emb_mask[0]) - offset:] = SpanCode.NOT_SPLIT
+
+            aspects = self.get_spans_information_from_sequence(best_path, sample, 'ASPECT')
+            opinions = self.get_spans_information_from_sequence(best_path, sample, 'OPINION')
+
+            if self.config['model']['span-creator']['add-aspects-to-opinions']:
+                opinions.add_span_manager(aspects)
+            if self.config['model']['span-creator']['add-opinions-to-aspects']:
+                aspects.add_span_manager(opinions)
+
             aspect_results.append(
-                self.get_spans_information_from_sequence(best_path, sample, 'ASPECT')
+                SpanInformationOutput.from_span_manager(aspects, sample.sentence_obj[0]).to_device(data.device)
             )
             opinion_results.append(
-                self.get_spans_information_from_sequence(best_path, sample, 'OPINION')
+                SpanInformationOutput.from_span_manager(opinions, sample.sentence_obj[0]).to_device(data.device)
             )
 
         return aspect_results, opinion_results
 
-    def get_spans_information_from_sequence(self, seq: Tensor, sample: Batch, source: str) -> SpanInformationOutput:
+    def get_spans_information_from_sequence(self, seq: Tensor, sample: Batch, source: str) -> SpanInformationManager:
         seq = self._replace_not_split(seq, source)
         begins = self._get_begin_indices(seq, sample, source)
 
@@ -96,14 +102,12 @@ class SpanCreatorModel(BaseModel):
 
         if not span_manager.span_ranges:
             span_manager.add_predicted_information(0, len(seq) - 1)
-        elif self.config['model']['span-creator']['extend-spans']:
+        elif self.config['model']['span-creator'][f'extend-{source.lower()}-span-ranges'] is not None:
             max_number = self.config['model']['span-creator']['max-number-of-spans']
-            span_manager.extend_span_ranges(sample, self.extend_ranges, max_number=max_number)
+            extend_ranges = self.config['model']['span-creator'][f'extend-{source.lower()}-span-ranges']
+            span_manager.extend_span_ranges(sample, extend_ranges, max_number=max_number)
 
-        return SpanInformationOutput.from_span_manager(
-            span_manager,
-            sample.sentence_obj[0]
-        ).to_device(seq.device)
+        return span_manager
 
     @staticmethod
     def _replace_not_split(seq: Tensor, source: str) -> Tensor:

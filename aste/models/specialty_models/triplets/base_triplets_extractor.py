@@ -60,19 +60,26 @@ class BaseTripletExtractorModel(BaseModel):
         raise NotImplementedError
 
     def get_loss(self, model_out: TripletModelOutput) -> ModelLoss:
+        temp = 0.1
         reverse_loss_mask = (~model_out.loss_mask) * model_out.pad_mask
 
-        sim: Tensor = torch.exp(model_out.features)
+        sim: Tensor = torch.exp(model_out.features / temp)
 
         numerator: Tensor = sim * model_out.loss_mask
 
         negatives: Tensor = sim * reverse_loss_mask
+        k = self.config['model']['triplet-extractor']['num-negatives']
+        k = min(k, negatives.shape[TripletDimensions.OPINION])
+        negatives = torch.topk(negatives, k=k, dim=TripletDimensions.OPINION, sorted=False).values
+
         denominator: Tensor = torch.sum(negatives, dim=TripletDimensions.OPINION, keepdim=True)
         denominator = numerator + denominator
         denominator += 1e-8
 
         loss: Tensor = numerator / denominator
-        loss = torch.sum(loss, dim=[1, 2]) / torch.sum(model_out.loss_mask, dim=[1, 2])
+        opinion_loss = torch.sum(model_out.loss_mask, dim=TripletDimensions.OPINION)
+        loss = torch.sum(loss, dim=TripletDimensions.OPINION) / (opinion_loss + 1e-8)
+        loss = torch.sum(loss, dim=TripletDimensions.ASPECT) / (opinion_loss > 0).sum().float()
         loss = -torch.log(loss)
         loss = torch.sum(loss) / self.config['general-training']['batch-size']
 

@@ -44,17 +44,29 @@ class BaseSentimentTripletExtractorModel(BaseTripletExtractorModel):
         sample: Tensor
         sample_aspects: SpanInformationOutput
         sample_opinions: SpanInformationOutput
-        for sample, sample_aspects, sample_opinions in zip(matrix, data_input.aspects, data_input.opinions):
+        zip_ = zip(matrix, data_input.aspects, data_input.opinions)
+        for sample_idx, (sample, sample_aspects, sample_opinions) in enumerate(zip_):
             significant: Tensor = self.threshold_data(sample).nonzero()
             a_ranges: Tensor = sample_aspects.span_range[significant[:, 0]]
             o_ranges: Tensor = sample_opinions.span_range[significant[:, 1]]
+            span_creation_info = sample_opinions.span_creation_info[significant[:, 1]]
             sentiments: Tensor = sample_opinions.sentiments[significant[:, 1]]
+
+            features: Tensor = create_embeddings_matrix_by_concat_tensors(
+                data_input.aspects_agg_emb[sample_idx:sample_idx + 1],
+                data_input.opinions_agg_emb[sample_idx:sample_idx + 1]
+            )
+            features = features[:, significant[:, 0], significant[:, 1]]
+            similarities = matrix[sample_idx: sample_idx + 1, significant[:, 0], significant[:, 1]]
             triplets.append(
                 SampleTripletOutput(
                     aspect_ranges=a_ranges,
                     opinion_ranges=o_ranges,
                     pred_sentiments=sentiments,
-                    sentence=sample_opinions.sentence
+                    sentence=sample_opinions.sentence,
+                    similarities=similarities.squeeze(dim=0),
+                    span_creation_info=span_creation_info,
+                    features=features.squeeze(dim=0)
                 )
             )
 
@@ -69,20 +81,20 @@ class MetricTripletExtractorModel(BaseSentimentTripletExtractorModel):
                  ):
         super(MetricTripletExtractorModel, self).__init__(input_dim=input_dim, model_name=model_name, config=config)
 
-        neurons: List = [
-            input_dim,
-            input_dim // 2,
-            input_dim // 2,
-            input_dim
-        ]
-        self.aspect_net = sequential_blocks(neurons=neurons, device=self.device)
-        self.opinion_net = sequential_blocks(neurons=neurons, device=self.device)
+        self.aspect_net = sequential_blocks([input_dim, input_dim], device=self.device, is_last=False)
+        self.opinion_net = sequential_blocks([input_dim, input_dim], device=self.device, is_last=False)
+
+        neurons: List = [input_dim, input_dim // 2, input_dim // 8]
+        self.span_net = sequential_blocks(neurons=neurons, device=self.device)
 
         self.similarity_metric = torch.nn.CosineSimilarity(dim=-1)
 
     def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:
         aspects = self.aspect_net(data_input.aspects_agg_emb)
         opinions = self.opinion_net(data_input.opinions_agg_emb)
+
+        aspects = self.span_net(aspects)
+        opinions = self.span_net(opinions)
 
         aspects, opinions = expand_aspect_and_opinion(aspects, opinions)
 
@@ -102,9 +114,9 @@ class NeuralTripletExtractorModel(BaseSentimentTripletExtractorModel):
 
         input_dimension: int = input_dim * 2
 
-        neurons: List = [input_dim, input_dim // 2, input_dim // 2, input_dim]
-        self.aspect_net = sequential_blocks(neurons=neurons, device=self.device)
-        self.opinion_net = sequential_blocks(neurons=neurons, device=self.device)
+        neurons: List = [input_dim, input_dim]
+        self.aspect_net = sequential_blocks(neurons=neurons, device=self.device, is_last=False)
+        self.opinion_net = sequential_blocks(neurons=neurons, device=self.device, is_last=False)
 
         neurons: List = [input_dimension, input_dimension // 2, input_dimension // 4, input_dimension // 8, 1]
         self.similarity: Sequential = sequential_blocks(neurons, self.device)
@@ -148,33 +160,3 @@ class NeuralCrossEntropyExtractorModel(NeuralTripletExtractorModel):
             }
         )
         return full_loss
-
-
-class AttentionTripletExtractorModel(BaseSentimentTripletExtractorModel):
-    def __init__(self, input_dim: int,
-                 config: Dict,
-                 model_name: str = 'Attention Triplet Extractor Model',
-                 *args, **kwargs
-                 ):
-        super(AttentionTripletExtractorModel, self).__init__(input_dim=input_dim, model_name=model_name, config=config)
-
-        neurons: List = [input_dim, input_dim // 2, input_dim // 2, input_dim]
-        self.query = sequential_blocks(neurons=neurons, device=self.device)
-        self.key = sequential_blocks(neurons=neurons, device=self.device)
-        neurons: List = [input_dim, input_dim // 2, input_dim // 4, 1]
-        self.value = sequential_blocks(neurons=neurons, device=self.device)
-
-        self.softmax = torch.nn.Softmax(dim=-1)
-
-    def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:
-        queries = self.query(data_input.aspects_agg_emb)
-        keys = self.key(data_input.opinions_agg_emb)
-        values = self.value(data_input.opinions_agg_emb)
-
-        matrix: Tensor = torch.matmul(queries, keys.transpose(-1, -2)) / torch.sqrt(
-            torch.tensor(keys.shape[-1], dtype=torch.float32))
-        matrix = self.softmax(matrix)
-        matrix = torch.matmul(matrix, values)
-        matrix = F.sigmoid(matrix)
-
-        return matrix

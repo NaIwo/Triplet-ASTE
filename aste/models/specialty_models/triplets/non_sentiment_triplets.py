@@ -45,6 +45,8 @@ class BaseNonSentimentTripletExtractorModel(BaseTripletExtractorModel):
             a_ranges: Tensor = sample_aspects.span_range[significant[:, 0]]
             o_ranges: Tensor = sample_opinions.span_range[significant[:, 1]]
 
+            span_creation_info = sample_opinions.span_creation_info[significant[:, 1]]
+
             sentiments = create_sentiment_matrix(data_input)
             sentiments = sentiments[sample_idx:sample_idx + 1, significant[:, 0], significant[:, 1]]
 
@@ -53,6 +55,7 @@ class BaseNonSentimentTripletExtractorModel(BaseTripletExtractorModel):
                 data_input.opinions_agg_emb[sample_idx:sample_idx + 1]
             )
             features = features[:, significant[:, 0], significant[:, 1]]
+            similarities = matrix[sample_idx: sample_idx + 1, significant[:, 0], significant[:, 1]]
 
             triplets.append(
                 SampleTripletOutput(
@@ -60,6 +63,8 @@ class BaseNonSentimentTripletExtractorModel(BaseTripletExtractorModel):
                     opinion_ranges=o_ranges,
                     true_sentiments=sentiments.squeeze(dim=0),
                     sentence=sample_opinions.sentence,
+                    similarities=similarities.squeeze(dim=0),
+                    span_creation_info=span_creation_info,
                     features=features.squeeze(dim=0)
                 )
             )
@@ -77,20 +82,25 @@ class NonSentimentMetricTripletExtractorModel(BaseNonSentimentTripletExtractorMo
             input_dim=input_dim, model_name=model_name, config=config
         )
 
+        self.aspect_net = sequential_blocks([input_dim, input_dim], device=self.device, is_last=False)
+        self.opinion_net = sequential_blocks([input_dim, input_dim], device=self.device, is_last=False)
+
         neurons: List = [
             input_dim,
             input_dim // 2,
-            input_dim // 2,
-            input_dim
+            input_dim // 4,
+            input_dim // 2
         ]
-        self.aspect_net = sequential_blocks(neurons=neurons, device=self.device)
-        self.opinion_net = sequential_blocks(neurons=neurons, device=self.device)
+        self.span_net = sequential_blocks(neurons=neurons, device=self.device)
 
         self.similarity_metric = torch.nn.CosineSimilarity(dim=-1)
 
     def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:
         aspects = self.aspect_net(data_input.aspects_agg_emb)
         opinions = self.opinion_net(data_input.opinions_agg_emb)
+
+        aspects = self.span_net(aspects)
+        opinions = self.span_net(opinions)
 
         aspects, opinions = expand_aspect_and_opinion(aspects, opinions)
 

@@ -8,6 +8,7 @@ from ...base_model import BaseModel
 from ...outputs import (
     TripletModelOutput
 )
+from ....losses.dice_loss import DiceLoss
 from ....dataset.domain.const import ASTELabels
 from ....models.outputs import (
     ModelLoss,
@@ -29,7 +30,7 @@ class SentimentPredictor(BaseModel):
             num_classes=n_polarities
         )
         self.final_metrics: MetricCollection = MetricCollection(metrics=metrics)
-        self.loss = torch.nn.CrossEntropyLoss(ignore_index=ASTELabels.NOT_RELEVANT.value)
+        self.loss = DiceLoss(ignore_index=ASTELabels.NOT_RELEVANT.value, alpha=0.7, with_logits=False)
 
         neurons: List = [
             input_dim,
@@ -45,7 +46,11 @@ class SentimentPredictor(BaseModel):
         out = data.copy()
 
         for triplet in out.triplets:
-            scores = self.predictor(triplet.features)
+            features = triplet.features
+            # if triplet.similarities.size() != torch.Size([0]):
+            #     similarities = triplet.similarities.unsqueeze(-1).repeat(1, features.size(-1))
+            #     features *= similarities
+            scores = self.predictor(features)
             triplet.features = scores
             sentiments = torch.argmax(scores, dim=-1, keepdim=True)
             triplet.pred_sentiments = sentiments

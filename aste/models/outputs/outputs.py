@@ -102,7 +102,7 @@ class SpanInformationOutput(BaseModelOutput):
             sentiments = self.sentiments.repeat(n)
         else:
             num_elements = self.span_creation_info.shape[0]
-            sentiments = torch.full_like(self.span_creation_info, ASTELabels.NOT_RELEVANT).repeat(n)
+            sentiments = torch.full_like(self.span_creation_info, ASTELabels.NOT_PAIR).repeat(n)
             for p_idx, p in enumerate(sentiment_collapse_keys):
                 indexes = range(p_idx * num_elements, num_elements * (p_idx + 1))
                 temp = self.sentiments == p
@@ -263,6 +263,8 @@ class SampleTripletOutput(BaseModelOutput):
             sentence: Sentence,
             pred_sentiments: Optional[Tensor] = None,
             true_sentiments: Optional[Tensor] = None,
+            similarities: Optional[Tensor] = None,
+            span_creation_info: Optional[Tensor] = None,
             features: Optional[Tensor] = None,
             batch: Optional[Dict[str, Tensor]] = None,
     ):
@@ -287,19 +289,36 @@ class SampleTripletOutput(BaseModelOutput):
         self.pred_sentiments = pred_sentiments
         self.true_sentiments = true_sentiments
 
+        self.similarities = similarities
+        self.span_creation_info = span_creation_info
+
         self.construct_triplets()
 
     def construct_triplets(self):
+        highest_similarity = {}
         self.triplets: List[Triplet] = list()
-        for aspect_range, opinion_range, s in zip(self.aspect_ranges, self.opinion_ranges, self.pred_sentiments):
+        triplet_idx = 0
+        zip_ = zip(self.aspect_ranges, self.opinion_ranges, self.pred_sentiments)
+        for idx, (aspect_range, opinion_range, s) in enumerate(zip_):
             if s == ASTELabels.NOT_RELEVANT.value or s == ASTELabels.NOT_PAIR.value:
                 continue
+
+            key = (aspect_range[0].item(), aspect_range[1].item(), opinion_range[0].item(), opinion_range[1].item())
+            if (key in highest_similarity.keys()) and (self.similarities[idx] <= highest_similarity[key]['score']):
+                continue
+
             triplet: Triplet = Triplet(
                 aspect_span=construct_predicted_spans(aspect_range.unsqueeze(0), self.sentence)[0],
                 opinion_span=construct_predicted_spans(opinion_range.unsqueeze(0), self.sentence)[0],
                 sentiment=ASTELabels(int(s)).name
             )
-            self.triplets.append(triplet)
+
+            if key in highest_similarity.keys():
+                self.triplets[highest_similarity[key]['idx']] = triplet
+            else:
+                self.triplets.append(triplet)
+                highest_similarity[key] = {'score': self.similarities[idx], 'idx': triplet_idx}
+                triplet_idx += 1
 
     def __repr__(self):
         return ' || '.join([str(t) for t in self.triplets])
@@ -311,6 +330,8 @@ class SampleTripletOutput(BaseModelOutput):
             sentence=self.sentence,
             pred_sentiments=self.pred_sentiments.clone() if self.pred_sentiments is not None else None,
             true_sentiments=self.true_sentiments.clone() if self.true_sentiments is not None else None,
+            similarities=self.similarities.clone() if self.similarities is not None else None,
+            span_creation_info=self.span_creation_info.clone() if self.span_creation_info is not None else None,
             features=self.features.clone() if self.features is not None else None,
             batch=self.batch
         )
@@ -339,6 +360,9 @@ class TripletModelOutput(BaseModelOutput):
     def get_predicted_sentiments(self) -> Tensor:
         return torch.cat([sample.pred_sentiments for sample in self.triplets])
 
+    def get_span_creation_info(self) -> Tensor:
+        return torch.cat([sample.span_creation_info for sample in self.triplets])
+
     def get_true_sentiments(self) -> Tensor:
         return torch.cat([sample.true_sentiments for sample in self.triplets])
 
@@ -366,16 +390,12 @@ class ClassificationModelOutput(BaseModelOutput):
     def __init__(
             self,
             batch: Batch,
-            aspect_features: Tensor,
-            opinion_features: Tensor,
             aspect_predictions: Tensor,
             opinion_predictions: Tensor,
             aspect_labels: Tensor,
             opinion_labels: Tensor,
     ):
         super().__init__(batch=batch)
-        self.aspect_features: Tensor = aspect_features
-        self.opinion_features: Tensor = opinion_features
         self.aspect_predictions: Tensor = aspect_predictions
         self.opinion_predictions: Tensor = opinion_predictions
         self.aspect_labels: Tensor = aspect_labels
@@ -412,4 +432,3 @@ class FinalTriplets(BaseModelOutput):
 
     def __repr__(self):
         return ' || '.join([str(t) for t in self.pred_triplets])
-
