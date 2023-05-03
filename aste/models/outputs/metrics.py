@@ -36,6 +36,9 @@ class ModelMetric:
         for metrics in self.metrics:
             yield metrics
 
+    def __getitem__(self, item):
+        return self.metrics[item]
+
     def metrics_with_prefix(self, prefix: str) -> Tuple:
         name: str
         score: Tensor

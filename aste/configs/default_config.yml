@@ -9,28 +9,43 @@ dataset:
     - NEG
     - NEU
 model:
-  learning-rate: 0.0001
   add-true-spans: True
+  freeze-creators: -1
+  freeze-triplets: 6
   transformer:
-    learning-rate: 0.00001
+    lr: 0.000005
     source: microsoft/deberta-base
   span-creator:
-    extend-opinion-span-ranges: [[0, 1], [0, -1]]
-    extend-aspect-span-ranges: [[0, 1], [0, -1]]
+    lr: 0.00003
+    extend-opinion-span-ranges: ~ # [[0, 1], [0, -1]]
+    extend-aspect-span-ranges: ~ # [[0, 1], [0, -1]]
+    all-opinion-spans-window: -1
     max-number-of-spans: 50
     loss-weight: 2.0
     add-aspects-to-opinions: True
     add-opinions-to-aspects: True
   span-classifier:
+    lr: 0.0001
     loss-weight: 1.0
+  aggregator:
+    lr: 0.00003
+  sentiment-extender:
+    lr: 0.00003
   pair-classifier:
-    loss-weight: 2.0
+    lr: 0.00003
+    loss-weight: 1.5
   sentiment-predictor:
-    loss-weight: 2.0
+    lr: 0.00004
+    loss-weight: 1.5
   triplet-extractor:
-    loss-weight: 2.0
-    threshold: 0.55
-    num-negatives: 5
+    lr: 0.00003
+    loss-weight: 1.2
+    threshold: 0.4
+    num-negatives: 6
+    temperature: 1.
+    negative-weight: 0.000001
+    aspect-to-opinion: True
+    opinion-to-aspect: True
 encoder:
   transformer:
     source: microsoft/deberta-base

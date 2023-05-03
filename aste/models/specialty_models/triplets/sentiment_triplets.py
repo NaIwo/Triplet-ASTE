@@ -3,7 +3,6 @@ from typing import Dict, List
 import torch
 from torch import Tensor
 from torch.nn import Sequential
-import torch.nn.functional as F
 
 from .base_triplets_extractor import BaseTripletExtractorModel
 from ..utils import scale_scores
@@ -35,7 +34,7 @@ class BaseSentimentTripletExtractorModel(BaseTripletExtractorModel):
         super(BaseSentimentTripletExtractorModel, self).__init__(
             input_dim=input_dim, model_name=model_name, config=config)
 
-    def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:
+    def similarity(self, aspects: Tensor, opinions: Tensor) -> Tensor:
         raise NotImplementedError
 
     def get_triplets_from_matrix(self, matrix: Tensor, data_input: SpanCreatorOutput) -> List[SampleTripletOutput]:
@@ -81,27 +80,25 @@ class MetricTripletExtractorModel(BaseSentimentTripletExtractorModel):
                  ):
         super(MetricTripletExtractorModel, self).__init__(input_dim=input_dim, model_name=model_name, config=config)
 
-        self.aspect_net = sequential_blocks([input_dim, input_dim], device=self.device, is_last=False)
-        self.opinion_net = sequential_blocks([input_dim, input_dim], device=self.device, is_last=False)
-
-        neurons: List = [input_dim, input_dim // 2, input_dim // 8]
-        self.span_net = sequential_blocks(neurons=neurons, device=self.device)
+        neurons: List = [
+            input_dim,
+            input_dim // 2,
+            input_dim // 4,
+            input_dim // 2
+        ]
+        self.aspect_net = sequential_blocks(neurons, device=self.device, is_last=True)
+        self.opinion_net = sequential_blocks(neurons, device=self.device, is_last=True)
 
         self.similarity_metric = torch.nn.CosineSimilarity(dim=-1)
 
-    def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:
-        aspects = self.aspect_net(data_input.aspects_agg_emb)
-        opinions = self.opinion_net(data_input.opinions_agg_emb)
+    def similarity(self, aspects: Tensor, opinions: Tensor) -> Tensor:
+        return torch.bmm(aspects, opinions.transpose(1, 2))
 
-        aspects = self.span_net(aspects)
-        opinions = self.span_net(opinions)
-
+    def normalized_similarity(self, aspects: Tensor, opinions: Tensor) -> Tensor:
         aspects, opinions = expand_aspect_and_opinion(aspects, opinions)
 
-        matrix: Tensor = self.similarity_metric(aspects, opinions)
-        matrix = scale_scores(matrix)
-
-        return matrix
+        similarities = self.similarity_metric(aspects, opinions)
+        return scale_scores(similarities)
 
 
 class NeuralTripletExtractorModel(BaseSentimentTripletExtractorModel):
@@ -119,18 +116,19 @@ class NeuralTripletExtractorModel(BaseSentimentTripletExtractorModel):
         self.opinion_net = sequential_blocks(neurons=neurons, device=self.device, is_last=False)
 
         neurons: List = [input_dimension, input_dimension // 2, input_dimension // 4, input_dimension // 8, 1]
-        self.similarity: Sequential = sequential_blocks(neurons, self.device)
-        self.similarity.append(torch.nn.Sigmoid())
+        self.similarity_net: Sequential = sequential_blocks(neurons, self.device)
+        self.similarity_metric = torch.nn.Sigmoid()
 
-    def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:
-        aspects = self.aspect_net(data_input.aspects_agg_emb)
-        opinions = self.opinion_net(data_input.opinions_agg_emb)
-
+    def similarity(self, aspects: Tensor, opinions: Tensor) -> Tensor:
         matrix: Tensor = create_embeddings_matrix_by_concat_tensors(aspects, opinions)
 
-        matrix = self.similarity(matrix)
+        matrix = self.similarity_net(matrix)
 
-        return matrix.squeeze(-1)
+        return matrix
+
+    def normalized_similarity(self, aspects: Tensor, opinions: Tensor) -> Tensor:
+        similarities = self.similarity_metric(aspects, opinions)
+        return similarities.squeeze(-1)
 
 
 class NeuralCrossEntropyExtractorModel(NeuralTripletExtractorModel):

@@ -8,7 +8,7 @@ from ...base_model import BaseModel
 from ...outputs import (
     TripletModelOutput
 )
-from ....losses.dice_loss import DiceLoss
+from ....losses import DiceLoss, FocalLoss
 from ....dataset.domain.const import ASTELabels
 from ....models.outputs import (
     ModelLoss,
@@ -30,7 +30,14 @@ class SentimentPredictor(BaseModel):
             num_classes=n_polarities
         )
         self.final_metrics: MetricCollection = MetricCollection(metrics=metrics)
-        self.loss = DiceLoss(ignore_index=ASTELabels.NOT_RELEVANT.value, alpha=0.7, with_logits=False)
+
+        metrics = get_selected_metrics(
+            for_spans=False,
+            dist_sync_on_step=True,
+        )
+        self.negative_metrics: MetricCollection = MetricCollection(metrics=metrics)
+
+        self.loss = FocalLoss(alpha=1., gamma=3.)
 
         neurons: List = [
             input_dim,
@@ -40,7 +47,7 @@ class SentimentPredictor(BaseModel):
             n_polarities
         ]
         self.predictor = sequential_blocks(neurons, self.device, is_last=True)
-        self.predictor.append(torch.nn.Softmax(dim=-1))
+        # self.predictor.append(torch.nn.Softmax(dim=-1))
 
     def forward(self, data: TripletModelOutput) -> TripletModelOutput:
         out = data.copy()
@@ -80,13 +87,19 @@ class SentimentPredictor(BaseModel):
             model_out.get_true_sentiments().view(-1),
             model_out.get_predicted_sentiments().view(-1)
         )
+        self.negative_metrics.update(
+            model_out.get_true_sentiments().view(-1) > 0,
+            model_out.get_predicted_sentiments().view(-1) > 0
+        )
 
     def get_metrics(self) -> ModelMetric:
         return ModelMetric(
             metrics={
                 'sentiment_predictor_metrics': self.final_metrics.compute(),
+                'sentiment_predictor_negative_metrics': self.negative_metrics.compute()
             }
         )
 
     def reset_metrics(self) -> None:
         self.final_metrics.reset()
+        self.negative_metrics.reset()

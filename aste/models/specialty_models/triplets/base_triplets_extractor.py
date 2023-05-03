@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import torch
 from torch import Tensor
@@ -12,11 +12,12 @@ from ...outputs import (
     TripletModelOutput
 )
 from ...utils.const import TripletDimensions
+from ...utils.utils import create_random_tensor_with_one_true_per_row as random_row_mask
 from ...utils.triplet_utils import (
     create_mask_matrix_for_loss,
     create_mask_matrix_for_prediction,
     get_true_predicted_mask,
-    create_embedding_mask_matrix
+    create_embedding_mask_matrix,
 )
 from ....models.outputs import (
     ModelLoss,
@@ -33,56 +34,60 @@ class BaseTripletExtractorModel(BaseModel):
         self.final_metrics: MetricCollection = MetricCollection(metrics=metrics)
 
     def forward(self, data_input: SpanCreatorOutput) -> TripletModelOutput:
-        matrix: Tensor = self._forward_embeddings(data_input)
+        aspects, opinions = self._forward_embeddings(data_input)
         pad_mask: Tensor = create_embedding_mask_matrix(data_input)
-        matrix = matrix * pad_mask
+
+        norm_sim: Tensor = self.normalized_similarity(aspects, opinions) * pad_mask
+        sim: Tensor = self.similarity(aspects, opinions) * pad_mask
 
         loss_mask: Tensor = create_mask_matrix_for_loss(data_input)
         prediction_mask: Tensor = create_mask_matrix_for_prediction(data_input)
 
-        triplets: List[SampleTripletOutput] = self.get_triplets_from_matrix(matrix * prediction_mask, data_input)
+        triplets: List[SampleTripletOutput] = self.get_triplets_from_matrix(norm_sim * prediction_mask, data_input)
 
         true_predicted_mask = get_true_predicted_mask(data_input)
 
         return TripletModelOutput(
             batch=data_input.batch,
             triplets=triplets,
-            similarities=matrix,
+            similarities=sim,
+            normalized_similarities=norm_sim,
             loss_mask=loss_mask,
             true_predicted_mask=true_predicted_mask,
+            prediction_mask=prediction_mask,
             pad_mask=pad_mask
         )
 
-    def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tensor:
+    def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tuple[Tensor, Tensor]:
+        aspects = self.aspect_net(data_input.aspects_agg_emb)
+        opinions = self.opinion_net(data_input.opinions_agg_emb)
+        return aspects, opinions
+
+    def normalized_similarity(self, aspects: Tensor, opinions: Tensor) -> Tensor:
+        return self.similarity(aspects, opinions)
+
+    def similarity(self, aspects: Tensor, opinions: Tensor) -> Tensor:
         raise NotImplementedError
 
     def get_triplets_from_matrix(self, matrix: Tensor, data_input: SpanCreatorOutput) -> List[SampleTripletOutput]:
         raise NotImplementedError
 
     def get_loss(self, model_out: TripletModelOutput) -> ModelLoss:
-        temp = 0.1
-        reverse_loss_mask = (~model_out.loss_mask) * model_out.pad_mask
+        denominator = 0
+        loss = torch.tensor(0.0).to(self.device)
 
-        sim: Tensor = torch.exp(model_out.features / temp)
+        if self.config['model']['triplet-extractor']['aspect-to-opinion']:
+            denominator += 1
+            loss += self._get_loss(model_out, dim=TripletDimensions.OPINION)
 
-        numerator: Tensor = sim * model_out.loss_mask
+        if self.config['model']['triplet-extractor']['opinion-to-aspect']:
+            denominator += 1
+            loss += self._get_loss(model_out, dim=TripletDimensions.ASPECT)
 
-        negatives: Tensor = sim * reverse_loss_mask
-        k = self.config['model']['triplet-extractor']['num-negatives']
-        k = min(k, negatives.shape[TripletDimensions.OPINION])
-        negatives = torch.topk(negatives, k=k, dim=TripletDimensions.OPINION, sorted=False).values
+        if denominator == 0:
+            return ModelLoss(config=self.config, losses={})
 
-        denominator: Tensor = torch.sum(negatives, dim=TripletDimensions.OPINION, keepdim=True)
-        denominator = numerator + denominator
-        denominator += 1e-8
-
-        loss: Tensor = numerator / denominator
-        opinion_loss = torch.sum(model_out.loss_mask, dim=TripletDimensions.OPINION)
-        loss = torch.sum(loss, dim=TripletDimensions.OPINION) / (opinion_loss + 1e-8)
-        loss = torch.sum(loss, dim=TripletDimensions.ASPECT) / (opinion_loss > 0).sum().float()
-        loss = -torch.log(loss)
-        loss = torch.sum(loss) / self.config['general-training']['batch-size']
-
+        loss = loss / denominator
         full_loss = ModelLoss(
             config=self.config,
             losses={
@@ -90,19 +95,66 @@ class BaseTripletExtractorModel(BaseModel):
                     'loss-weight'] * self.trainable,
             }
         )
+
         return full_loss
+
+    def _get_loss(self, model_out: TripletModelOutput, dim: int) -> Tensor:
+        mask = model_out.loss_mask
+        phrase_mask = torch.isin(mask.int(), 1).any(dim=dim, keepdim=True)
+        sample_mask = random_row_mask(model_out.pad_mask, dim, self.device)
+        mask = torch.where(phrase_mask, mask, sample_mask)
+        mask = mask & model_out.pad_mask
+
+        reverse_loss_mask = (~model_out.loss_mask) * model_out.pad_mask
+
+        sim: Tensor = model_out.similarities
+        sim = torch.exp(sim / self.config['model']['triplet-extractor']['temperature'])
+        weight = self.config['model']['triplet-extractor']['negative-weight']
+        sim_numerator = torch.where(phrase_mask, sim, torch.full_like(sim, weight).to(self.device))
+
+        numerator: Tensor = sim_numerator * mask
+
+        negatives: Tensor = sim * reverse_loss_mask
+        k = self.config['model']['triplet-extractor']['num-negatives']
+        k = min(k, negatives.shape[dim])
+        negatives = torch.topk(negatives, k=k, dim=dim, sorted=False).values
+
+        denominator: Tensor = torch.sum(negatives, dim=dim, keepdim=True)
+        denominator = numerator + denominator
+        denominator += 1e-8
+
+        loss: Tensor = numerator / denominator
+        phrase_normalizer = torch.sum(mask, dim=dim)
+        loss = torch.sum(loss, dim=dim) / (phrase_normalizer + 1e-8)
+        loss = torch.sum(loss, dim=-1) / ((phrase_normalizer > 0).sum().float() + 1e-8)
+        loss = -torch.log(loss)
+        loss = torch.sum(loss) / self.config['general-training']['batch-size']
+
+        if loss.isinf():
+            loss = torch.tensor(0.).to(self.device)
+
+        return loss
 
     def update_metrics(self, model_out: TripletModelOutput) -> None:
         tp_fn: int = model_out.loss_mask.sum().item()
-        tp_fp: int = model_out.number_of_triplets()
+        # tp_fp: int = model_out.prediction_mask.sum().item()
 
-        triplets: Tensor = self.threshold_data(model_out.features)
+        triplets: Tensor = self.threshold_data(model_out.normalized_similarities)
+        tp_fp: int = (triplets & model_out.prediction_mask).sum().item()
         tp: int = (triplets & model_out.true_predicted_mask).sum().item()
 
         self.final_metrics.update(tp=tp, tp_fp=tp_fp, tp_fn=tp_fn)
 
     def threshold_data(self, data: Tensor) -> Tensor:
-        return data > self.config['model']['triplet-extractor']['threshold']
+        thr = self.config['model']['triplet-extractor']['threshold']
+        if isinstance(thr, float):
+            return data > thr
+        else:
+            mask = data > 0.0
+            thr = min(thr, data.shape[-1])
+            indices = torch.topk(data, thr, dim=-1).indices
+            mask = torch.zeros_like(data).scatter_(-1, indices, 1) * mask
+            return mask * data > 0.0
 
     def get_metrics(self) -> ModelMetric:
         return ModelMetric(

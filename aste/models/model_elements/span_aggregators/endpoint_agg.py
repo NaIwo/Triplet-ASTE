@@ -14,7 +14,7 @@ class EndPointAggregator(BaseAggregator, Module):
         distance_embedding_dim: int = 2
         self.distance_embedding = torch.nn.Linear(1, distance_embedding_dim)
 
-        self._out_dim: int = 2 * input_dim + distance_embedding_dim
+        self._out_dim: int = 3 * input_dim + distance_embedding_dim
         BaseAggregator.__init__(self, input_dim=self._out_dim, model_name=model_name, config=config)
 
     @property
@@ -30,7 +30,14 @@ class EndPointAggregator(BaseAggregator, Module):
         for span in sentence_spans:
             distance = self._get_distance_embedding(span)
             sentence_agg_embeddings.append(
-                torch.cat((sentence_embeddings[span[0]], sentence_embeddings[span[1]], distance))
+                torch.cat(
+                    (
+                        sentence_embeddings[0],
+                        sentence_embeddings[span[0]],
+                        sentence_embeddings[span[1]],
+                        distance
+                    )
+                )
             )
         return torch.stack(sentence_agg_embeddings, dim=0)
 

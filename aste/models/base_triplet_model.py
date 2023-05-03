@@ -1,6 +1,8 @@
+from collections import defaultdict
 from typing import Dict, Optional, Any
 
 import torch
+import wandb
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from torch import Tensor
 
@@ -55,15 +57,16 @@ class BaseTripletModel(BaseModel):
         loss: ModelLoss = self.get_loss(model_out)
 
         mt = model_out.triplet_output
-        loss_mask = mt.loss_mask & mt.true_predicted_mask
-        reverse_loss_mask = (~mt.loss_mask) & mt.true_predicted_mask
+        loss_mask = mt.loss_mask  # & mt.true_predicted_mask
+        reverse_loss_mask = (~mt.loss_mask) & mt.pad_mask  # & mt.true_predicted_mask
+        sim = mt.normalized_similarities
 
-        similarity = float((mt.features * loss_mask).sum() / (loss_mask.sum() + 1e-6))
-        non_similarity = float((mt.features * reverse_loss_mask).sum() / (reverse_loss_mask.sum() + 1e-6))
+        similarity = float((sim * loss_mask).sum() / (loss_mask.sum() + 1e-6))
+        non_similarity = float((sim * reverse_loss_mask).sum() / (reverse_loss_mask.sum() + 1e-6))
 
-        self.log('val_similarity', similarity, on_epoch=True, on_step=False, prog_bar=False,
+        self.log('val_similarity', similarity, on_epoch=False, on_step=True, prog_bar=False,
                  batch_size=self.config['general-training']['batch-size'], logger=True, sync_dist=True)
-        self.log('val_non-similarity', non_similarity, on_epoch=True, on_step=False, prog_bar=False,
+        self.log('val_non-similarity', non_similarity, on_epoch=False, on_step=True, prog_bar=False,
                  batch_size=self.config['general-training']['batch-size'], logger=True, sync_dist=True)
 
         self.log_loss(loss, prefix='val', on_epoch=True, on_step=False)
@@ -92,3 +95,37 @@ class BaseTripletModel(BaseModel):
         all_spans: Tensor = torch.cat([true_spans, predicted_spans], dim=0)
         uniques, counts = torch.unique(all_spans, return_counts=True, dim=0)
         return uniques[counts > 1].shape[0]
+
+    def triplet_precision_recall_different_thresholds(self, dataset):
+        self.eval()
+        results = defaultdict(list)
+        if isinstance(self.config['model']['triplet-extractor']['threshold'], int):
+            range_ = torch.arange(0, 20, 1, dtype=torch.int)
+        else:
+            range_ = torch.arange(0., 1., 0.05, dtype=torch.float)
+
+        for threshold in range_:
+            self.triplets_extractor.config['model']['triplet-extractor']['threshold'] = threshold
+            self.reset_metrics()
+            for batch in dataset:
+                batch.to_device(self.device)
+                model_out = self.forward(batch)
+                self.update_metrics(model_out)
+            metrics = self.get_metrics()['triplet_extractor_metric']
+            recall = metrics['SpanRecall'].item()
+            precision = metrics['SpanPrecision'].item()
+            results['recall'].append(recall)
+            results['precision'].append(precision)
+            self.reset_metrics()
+        wandb.log(
+            {
+                'Precision_Recall_vs_Threshold':
+                wandb.plot.line_series(
+                    xs=range_.tolist(),
+                    ys=[results['precision'], results['recall']],
+                    keys=['Precision', 'Recall'],
+                    title='Precision Recall vs Threshold',
+                    xname='Threshold',
+                )
+            }
+        )

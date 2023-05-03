@@ -343,19 +343,27 @@ class TripletModelOutput(BaseModelOutput):
             batch: Batch,
             triplets: List[SampleTripletOutput],
             similarities: Tensor,
+            normalized_similarities: Tensor,
             true_predicted_mask: Tensor,
+            prediction_mask: Tensor,
             loss_mask: Tensor,
             pad_mask: Tensor,
     ):
-        super().__init__(batch=batch, features=similarities)
+        super().__init__(batch=batch)
         self.triplets: List[SampleTripletOutput] = triplets
+        self.similarities: Tensor = similarities
+        self.normalized_similarities: Tensor = normalized_similarities
 
         self.true_predicted_mask: Tensor = true_predicted_mask
+        self.prediction_mask: Tensor = prediction_mask
         self.loss_mask: Tensor = loss_mask
         self.pad_mask: Tensor = pad_mask
 
     def number_of_triplets(self) -> int:
         return sum(len(sample.triplets) for sample in self.triplets)
+
+    def number_of_significant_similarities(self) -> int:
+        return sum([s.similarities.shape[0] for s in self.triplets])
 
     def get_predicted_sentiments(self) -> Tensor:
         return torch.cat([sample.pred_sentiments for sample in self.triplets])
@@ -376,8 +384,10 @@ class TripletModelOutput(BaseModelOutput):
         return TripletModelOutput(
             batch=self.batch,
             triplets=self.copy_triplets(),
-            similarities=self.features.clone(),
+            similarities=self.similarities.clone(),
+            normalized_similarities=self.normalized_similarities.clone(),
             true_predicted_mask=self.true_predicted_mask.clone(),
+            prediction_mask=self.prediction_mask.clone(),
             loss_mask=self.loss_mask.clone(),
             pad_mask=self.pad_mask.clone(),
         )

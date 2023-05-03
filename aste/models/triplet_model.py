@@ -23,6 +23,8 @@ from .specialty_models import (
     MetricTripletExtractorModel,
     SpanClassifierModel,
     NeuralTripletExtractorModel,
+    NonSentimentNeuralTripletExtractorModel,
+    NonSentimentAttentionTripletExtractorModel,
     PairClassifierModel
 )
 from .specialty_models import (
@@ -89,11 +91,11 @@ class OpinionBasedTripletModel(BaseTripletModel):
 
     def get_params_and_lr(self) -> List[Dict]:
         return [
-            {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['learning-rate']},
-            {'params': self.span_creator.parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.sentiment_extender.parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['lr']},
+            {'params': self.span_creator.parameters(), 'lr': self.config['model']['span-creator']['lr']},
+            {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['aggregator']['lr']},
+            {'params': self.sentiment_extender.parameters(), 'lr': self.config['model']['sentiment-extender']['lr']},
+            {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['triplet-extractor']['lr']},
         ]
 
 
@@ -137,12 +139,12 @@ class OpinionBasedTripletTwoEmbeddersModel(OpinionBasedTripletModel):
 
     def get_params_and_lr(self) -> List[Dict]:
         return [
-            {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['learning-rate']},
-            {'params': self.matrix_emb_layer.parameters(), 'lr': self.config['model']['transformer']['learning-rate']},
-            {'params': self.span_creator.parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.sentiment_extender.parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['lr']},
+            {'params': self.matrix_emb_layer.parameters(), 'lr': self.config['model']['transformer']['lr']},
+            {'params': self.span_creator.parameters(), 'lr': self.config['model']['span-creator']['lr']},
+            {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['aggregator']['lr']},
+            {'params': self.sentiment_extender.parameters(), 'lr': self.config['model']['sentiment-extender']['lr']},
+            {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['triplet-extractor']['lr']},
         ]
 
 
@@ -216,13 +218,13 @@ class OpinionBasedTripletModelClassifier(BaseTripletModel):
 
     def get_params_and_lr(self) -> List[Dict]:
         return [
-            {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['learning-rate']},
-            {'params': self.span_creator.parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.span_classifier.parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.pair_classifier.parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.sentiment_extender.parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['lr']},
+            {'params': self.span_creator.parameters(), 'lr': self.config['model']['span-creator']['lr']},
+            {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['aggregator']['lr']},
+            {'params': self.span_classifier.parameters(), 'lr': self.config['model']['span-classifier']['lr']},
+            {'params': self.pair_classifier.parameters(), 'lr': self.config['model']['pair-classifier']['lr']},
+            {'params': self.sentiment_extender.parameters(), 'lr': self.config['model']['sentiment-extender']['lr']},
+            {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['triplet-extractor']['lr']},
         ]
 
 
@@ -237,7 +239,7 @@ class SentimentPredictorTripletModel(BaseTripletModel):
         self.triplets_extractor: BaseModel = NonSentimentMetricTripletExtractorModel(
             config=config, input_dim=self.aggregator.output_dim
         )
-        self.span_classifier: BaseModel = SpanClassifierModel(input_dim=self.aggregator.output_dim, config=config)
+        # self.span_classifier: BaseModel = SpanClassifierModel(input_dim=self.aggregator.output_dim, config=config)
         self.sentiment_predictor: BaseModel = SentimentPredictor(
             input_dim=self.aggregator.output_dim * 2,
             config=config
@@ -247,19 +249,20 @@ class SentimentPredictorTripletModel(BaseTripletModel):
 
         self.model_with_losses = {
             self.span_creator: 'span_creator_output',
-            self.span_classifier: 'span_classifier_output',
+            # self.span_classifier: 'span_classifier_output',
             self.triplets_extractor: 'triplet_output',
             self.sentiment_predictor: 'predictor_triplet_output'
         }
         self.model_with_metrics = {
             self.span_creator: 'span_creator_output',
-            self.span_classifier: 'span_classifier_output',
+            # self.span_classifier: 'span_classifier_output',
             self.triplets_extractor: 'triplet_output',
             self.sentiment_predictor: 'predictor_triplet_output',
             self.final_metrics: 'final_triplet'
         }
 
     def forward(self, batch: Batch) -> ModelOutput:
+        self.freeze_with_schedule()
         batch.to_device(self.device)
         emb_output: BaseModelOutput = self.emb_layer(batch)
         span_creator_output: SpanCreatorOutput = self.span_creator(emb_output)
@@ -273,7 +276,7 @@ class SentimentPredictorTripletModel(BaseTripletModel):
             span_creator_output.get_opinion_span_predictions()
         )
 
-        span_classifier_output: ClassificationModelOutput = self.span_classifier(span_creator_output)
+        # span_classifier_output: ClassificationModelOutput = self.span_classifier(span_creator_output)
 
         triplet_output: TripletModelOutput = self.triplets_extractor(span_creator_output)
 
@@ -287,20 +290,42 @@ class SentimentPredictorTripletModel(BaseTripletModel):
         return ModelOutput(
             batch=batch,
             span_creator_output=span_creator_output,
-            span_classifier_output=span_classifier_output,
+            # span_classifier_output=span_classifier_output,
             triplet_output=triplet_output,
             predictor_triplet_output=predictor_triplet_output,
             final_triplet=final_triplet
         )
 
+    def freeze_with_schedule(self):
+        if self.current_epoch < self.config['model']['freeze-triplets']:
+            self.emb_layer.unfreeze()
+            self.span_creator.unfreeze()
+            self.aggregator.unfreeze()
+            self.sentiment_predictor.freeze()
+            self.triplets_extractor.freeze()
+
+        elif self.current_epoch < self.config['model']['freeze-creators']:
+            self.emb_layer.freeze()
+            self.span_creator.freeze()
+            self.aggregator.freeze()
+            self.sentiment_predictor.unfreeze()
+            self.triplets_extractor.unfreeze()
+
+        else:
+            self.emb_layer.unfreeze()
+            self.span_creator.unfreeze()
+            self.aggregator.unfreeze()
+            self.sentiment_predictor.unfreeze()
+            self.triplets_extractor.unfreeze()
+
     def get_params_and_lr(self) -> List[Dict]:
         return [
-            {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['learning-rate']},
-            {'params': self.span_creator.parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.span_classifier.parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.sentiment_predictor.parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['lr']},
+            {'params': self.span_creator.parameters(), 'lr': self.config['model']['span-creator']['lr']},
+            # {'params': self.span_classifier.parameters(), 'lr': self.config['model']['span-classifier']['lr']},
+            {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['aggregator']['lr']},
+            {'params': self.sentiment_predictor.parameters(), 'lr': self.config['model']['sentiment-predictor']['lr']},
+            {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['triplet-extractor']['lr']},
         ]
 
 
@@ -349,11 +374,11 @@ class SentimentPredictorTripletTwoEmbeddersModel(SentimentPredictorTripletModel)
 
     def get_params_and_lr(self) -> List[Dict]:
         return [
-            {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['learning-rate']},
-            {'params': self.matrix_emb_layer.parameters(), 'lr': self.config['model']['transformer']['learning-rate']},
-            {'params': self.span_creator.parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.sentiment_predictor.parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['learning-rate']},
-            {'params': self.span_classifier.parameters(), 'lr': self.config['model']['learning-rate']},
+            {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['lr']},
+            {'params': self.matrix_emb_layer.parameters(), 'lr': self.config['model']['transformer']['lr']},
+            {'params': self.span_creator.parameters(), 'lr': self.config['model']['span-creator']['lr']},
+            {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['aggregator']['lr']},
+            {'params': self.sentiment_predictor.parameters(), 'lr': self.config['model']['sentiment-predictor']['lr']},
+            {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['triplet-extractor']['lr']},
+            {'params': self.span_classifier.parameters(), 'lr': self.config['model']['span-classifier']['lr']},
         ]

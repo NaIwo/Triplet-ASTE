@@ -75,6 +75,9 @@ class SpanCreatorModel(BaseModel):
             if self.config['model']['span-creator']['add-opinions-to-aspects']:
                 aspects.add_span_manager(opinions)
 
+            if self.config['model']['span-creator']['all-opinion-spans-window'] > 0:
+                opinions = self.get_all_spans_with_max_window(sample, 'OPINION')
+
             aspect_results.append(
                 SpanInformationOutput.from_span_manager(aspects, sample.sentence_obj[0]).to_device(data.device)
             )
@@ -109,6 +112,26 @@ class SpanCreatorModel(BaseModel):
 
         return span_manager
 
+    def get_all_spans_with_max_window(self, sample: Batch, source: str) -> SpanInformationManager:
+        span_manager = SpanInformationManager()
+        code = CreatedSpanCodes.ADDED_TRUE if self.config['model']['add-true-spans'] else CreatedSpanCodes.NOT_RELEVANT
+        span_manager.add_true_information(sample, source, code)
+
+        offset: int = sample.sentence_obj[0].encoder.offset
+        start_idx: int
+        for start_idx in range(offset, sample.sub_words_mask.shape[1] - offset):
+            if sample.sub_words_mask[:, start_idx] == 0:
+                continue
+            window: int = 1
+            window_size: int = self.config['model']['span-creator']['all-opinion-spans-window']
+            while (window <= window_size) and (start_idx + window < sample.sub_words_mask.shape[1]):
+                if sample.sub_words_mask[:, start_idx + window] == 0:
+                    window_size += 1
+                else:
+                    span_manager.add_predicted_information(start_idx, start_idx + window - 1)
+                window += 1
+        return span_manager
+
     @staticmethod
     def _replace_not_split(seq: Tensor, source: str) -> Tensor:
         condition = (seq != SpanCode[f'BEGIN_{source}']) & \
@@ -138,7 +161,7 @@ class SpanCreatorModel(BaseModel):
             model_out.features,
             model_out.batch.chunk_label,
             model_out.batch.emb_mask,
-            reduction='token_mean'
+            reduction='mean'
         )
 
         full_loss = ModelLoss(

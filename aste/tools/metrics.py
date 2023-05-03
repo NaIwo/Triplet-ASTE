@@ -36,7 +36,7 @@ class SpanMetric(TorchMetric):
 
     @staticmethod
     def safe_div(dividend: float, divider: float) -> float:
-        return dividend / divider if divider != 0. else 0.
+        return dividend / divider if divider != 0. else torch.tensor(0.)
 
 
 class SpanPrecision(SpanMetric):

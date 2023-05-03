@@ -7,6 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 class BaseAggregator:
     def __init__(self, input_dim: int, config: Dict, model_name: str = 'base aggregator', *args, **kwargs):
+        self.trainable = True
         self.model_name: str = model_name
         self.input_dim: int = input_dim
         self.config: Dict = config
@@ -35,3 +36,15 @@ class BaseAggregator:
     @staticmethod
     def pad_sequence(agg_embeddings: List[Tensor]) -> Tensor:
         return pad_sequence(agg_embeddings, padding_value=0., batch_first=True)
+
+    def freeze(self) -> None:
+        self.trainable = False
+        if self.get_parameters() is not None:
+            for param in self.get_parameters():
+                param.requires_grad = False
+
+    def unfreeze(self) -> None:
+        self.trainable = True
+        if self.get_parameters() is not None:
+            for param in self.get_parameters():
+                param.requires_grad = True
