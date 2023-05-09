@@ -23,7 +23,7 @@ class BaseAggregator:
         return self.pad_sequence(agg_embeddings)
 
     def get_parameters(self):
-        return None
+        return {}
 
     def _get_agg_sentence_embeddings(self, sentence_embeddings: Tensor, sentence_spans: Tensor) -> Tensor:
         raise NotImplementedError

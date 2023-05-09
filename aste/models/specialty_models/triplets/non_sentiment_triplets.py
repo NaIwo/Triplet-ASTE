@@ -97,6 +97,10 @@ class NonSentimentMetricTripletExtractorModel(BaseNonSentimentTripletExtractorMo
 
         self.similarity_metric = torch.nn.CosineSimilarity(dim=-1)
 
+    @property
+    def output_dim(self):
+        return (self.input_dim // 2) * 2
+
     def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tuple[Tensor, Tensor]:
         aspects = self.aspect_net(data_input.aspects_agg_emb)
         opinions = self.opinion_net(data_input.opinions_agg_emb)

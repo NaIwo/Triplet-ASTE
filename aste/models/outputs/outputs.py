@@ -154,6 +154,16 @@ class SpanCreatorOutput(BaseModelOutput):
             opinions=[self.opinions[self.num]]
         )
 
+    def copy(self):
+        return SpanCreatorOutput(
+            batch=self.batch,
+            features=self.features.clone() if self.features is not None else None,
+            aspects=self.aspects[:],
+            opinions=self.opinions[:],
+            aspects_agg_emb=self.aspects_agg_emb.clone() if self.aspects_agg_emb is not None else None,
+            opinions_agg_emb=self.opinions_agg_emb.clone() if self.aspects_agg_emb is not None else None,
+        )
+
     def get_number_of_predicted_spans(self, with_repeated: bool = True) -> int:
         num = sum([s.get_number_of_predicted_elements(with_repeated) for s in self.aspects + self.opinions])
         return num

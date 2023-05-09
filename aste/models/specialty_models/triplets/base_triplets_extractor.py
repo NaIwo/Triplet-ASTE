@@ -27,14 +27,18 @@ from ....tools.metrics import get_selected_metrics
 
 
 class BaseTripletExtractorModel(BaseModel):
-    def __init__(self, config: Dict, model_name: str = 'Base Triplet Extractor Model', *args, **kwargs):
+    def __init__(self, config: Dict, input_dim: int, model_name: str = 'Base Triplet Extractor Model', *args, **kwargs):
         super(BaseTripletExtractorModel, self).__init__(model_name=model_name, config=config)
 
+        self.input_dim: int = input_dim
         metrics = get_selected_metrics(for_spans=True, dist_sync_on_step=True)
         self.final_metrics: MetricCollection = MetricCollection(metrics=metrics)
 
     def forward(self, data_input: SpanCreatorOutput) -> TripletModelOutput:
+        data_input = data_input.copy()
         aspects, opinions = self._forward_embeddings(data_input)
+        data_input.aspects_agg_emb = aspects
+        data_input.opinions_agg_emb = opinions
         pad_mask: Tensor = create_embedding_mask_matrix(data_input)
 
         norm_sim: Tensor = self.normalized_similarity(aspects, opinions) * pad_mask
@@ -57,6 +61,10 @@ class BaseTripletExtractorModel(BaseModel):
             prediction_mask=prediction_mask,
             pad_mask=pad_mask
         )
+
+    @property
+    def output_dim(self):
+        return self.input_dim * 2
 
     def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tuple[Tensor, Tensor]:
         aspects = self.aspect_net(data_input.aspects_agg_emb)

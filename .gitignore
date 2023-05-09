@@ -132,3 +132,4 @@ dmypy.json
 /experiments/experiment_results/
 /wandb/
 /lightning_logs/
+*/amazon/
