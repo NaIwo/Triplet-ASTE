@@ -1,5 +1,7 @@
 import torch
 from torch import Tensor
+from aste.utils import ignore_index
+from typing import Optional
 
 
 def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch.dtype, eps: float = 1e-6) -> Tensor:
@@ -51,12 +53,14 @@ def focal_loss(
 
 class FocalLoss(torch.nn.Module):
 
-    def __init__(self, alpha: float, gamma: float = 2.0, reduction: str = 'mean', eps: float | None = None) -> None:
+    def __init__(self, alpha: float, gamma: float = 2.0, reduction: str = 'mean', eps: float | None = None, ignore_index: Optional[int] = None) -> None:
         super().__init__()
         self.alpha: float = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
         self.eps: float | None = eps
+        self.ignore_index = ignore_index
 
+    @ignore_index
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return focal_loss(input, target, self.alpha, self.gamma, self.reduction, self.eps)

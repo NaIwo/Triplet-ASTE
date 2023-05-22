@@ -3,7 +3,7 @@ from typing import Dict, List
 import torch
 from torchmetrics import MetricCollection
 
-from ..utils import sequential_blocks
+from ..utils import sequential_blocks, TransformerModel
 from ...base_model import BaseModel
 from ...outputs import (
     TripletModelOutput
@@ -39,6 +39,7 @@ class SentimentPredictor(BaseModel):
 
         self.loss = FocalLoss(alpha=1., gamma=3.)
 
+        input_dim = 3 * input_dim + 32
         neurons: List = [
             input_dim,
             input_dim // 2,
@@ -47,6 +48,7 @@ class SentimentPredictor(BaseModel):
             n_polarities
         ]
         self.predictor = sequential_blocks(neurons, self.device, is_last=True)
+        self.distance = sequential_blocks([1, 16, 32], self.device, is_last=False)
         # self.predictor.append(torch.nn.Softmax(dim=-1))
 
     def forward(self, data: TripletModelOutput) -> TripletModelOutput:
@@ -54,14 +56,19 @@ class SentimentPredictor(BaseModel):
 
         for triplet in out.triplets:
             features = triplet.features
+            cls = triplet.sentence_emb[0].repeat(features.shape[0], 1)
             # if triplet.similarities.size() != torch.Size([0]):
-            #     similarities = triplet.similarities.unsqueeze(-1).repeat(1, features.size(-1))
-            #     features *= similarities
+            #     similarities = triplet.similarities.unsqueeze(-1).repeat(1, cls.size(-1))
+            #     cls *= similarities
+            distance = self.distance(
+                torch.abs(triplet.opinion_ranges[:, 0:1] - triplet.aspect_ranges[:, 0:1]).float()
+            )
+            features = torch.cat([features, cls, distance], dim=1)
             scores = self.predictor(features)
             triplet.features = scores
             sentiments = torch.argmax(scores, dim=-1, keepdim=True)
             triplet.pred_sentiments = sentiments
-            triplet.construct_triplets()
+            triplet.construct_triplets(self.config['model']['remove-intersected'])
 
         return out
 

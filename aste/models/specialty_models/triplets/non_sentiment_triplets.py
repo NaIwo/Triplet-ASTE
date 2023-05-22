@@ -48,6 +48,8 @@ class BaseNonSentimentTripletExtractorModel(BaseTripletExtractorModel):
 
             a_ranges: Tensor = sample_aspects.span_range[significant[:, 0]]
             o_ranges: Tensor = sample_opinions.span_range[significant[:, 1]]
+            a_emb: Tensor = data_input.aspects_agg_emb[sample_idx:sample_idx + 1, significant[:, 0]]
+            o_emb: Tensor = data_input.opinions_agg_emb[sample_idx:sample_idx + 1, significant[:, 1]]
 
             span_creation_info = sample_opinions.span_creation_info[significant[:, 1]]
 
@@ -65,6 +67,9 @@ class BaseNonSentimentTripletExtractorModel(BaseTripletExtractorModel):
                 SampleTripletOutput(
                     aspect_ranges=a_ranges,
                     opinion_ranges=o_ranges,
+                    sentence_emb=data_input.sentence_emb[sample_idx],
+                    aspect_emb=a_emb.squeeze(dim=0),
+                    opinion_emb=o_emb.squeeze(dim=0),
                     true_sentiments=sentiments.squeeze(dim=0),
                     sentence=sample_opinions.sentence,
                     similarities=similarities.squeeze(dim=0),
@@ -96,10 +101,6 @@ class NonSentimentMetricTripletExtractorModel(BaseNonSentimentTripletExtractorMo
         self.opinion_net = sequential_blocks(neurons, device=self.device, is_last=True)
 
         self.similarity_metric = torch.nn.CosineSimilarity(dim=-1)
-
-    @property
-    def output_dim(self):
-        return (self.input_dim // 2) * 2
 
     def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tuple[Tensor, Tensor]:
         aspects = self.aspect_net(data_input.aspects_agg_emb)

@@ -5,7 +5,8 @@ from .base_model import BaseModel
 from .base_triplet_model import BaseTripletModel
 from .model_elements.span_aggregators import (
     BaseAggregator,
-    EndPointAggregator
+    EndPointAggregator,
+    MaxPoolAggregator
 )
 from .model_elements.embeddings import BaseEmbedding, TransformerWithAggregation
 from .outputs import (
@@ -235,13 +236,13 @@ class SentimentPredictorTripletModel(BaseTripletModel):
         self.span_creator: BaseModel = SpanCreatorModel(
             input_dim=self.emb_layer.embedding_dim, config=config
         )
-        self.aggregator: BaseAggregator = EndPointAggregator(input_dim=self.emb_layer.embedding_dim, config=config)
+        self.aggregator: BaseAggregator = MaxPoolAggregator(input_dim=self.emb_layer.embedding_dim, config=config)
         self.triplets_extractor: BaseModel = NonSentimentMetricTripletExtractorModel(
             config=config, input_dim=self.aggregator.output_dim
         )
-        # self.span_classifier: BaseModel = SpanClassifierModel(input_dim=self.aggregator.output_dim, config=config)
+        self.span_classifier: BaseModel = SpanClassifierModel(input_dim=self.aggregator.output_dim, config=config)
         self.sentiment_predictor: BaseModel = SentimentPredictor(
-            input_dim=self.aggregator.output_dim * 2,
+            input_dim=self.aggregator.output_dim,
             config=config
         )
 
@@ -249,13 +250,13 @@ class SentimentPredictorTripletModel(BaseTripletModel):
 
         self.model_with_losses = {
             self.span_creator: 'span_creator_output',
-            # self.span_classifier: 'span_classifier_output',
+            self.span_classifier: 'span_classifier_output',
             self.triplets_extractor: 'triplet_output',
             self.sentiment_predictor: 'predictor_triplet_output'
         }
         self.model_with_metrics = {
             self.span_creator: 'span_creator_output',
-            # self.span_classifier: 'span_classifier_output',
+            self.span_classifier: 'span_classifier_output',
             self.triplets_extractor: 'triplet_output',
             self.sentiment_predictor: 'predictor_triplet_output',
             self.final_metrics: 'final_triplet'
@@ -275,8 +276,9 @@ class SentimentPredictorTripletModel(BaseTripletModel):
             emb_output.features,
             span_creator_output.get_opinion_span_predictions()
         )
+        span_creator_output.sentence_emb = emb_output.features.clone()
 
-        # span_classifier_output: ClassificationModelOutput = self.span_classifier(span_creator_output)
+        span_classifier_output: ClassificationModelOutput = self.span_classifier(span_creator_output)
 
         triplet_output: TripletModelOutput = self.triplets_extractor(span_creator_output)
 
@@ -290,7 +292,7 @@ class SentimentPredictorTripletModel(BaseTripletModel):
         return ModelOutput(
             batch=batch,
             span_creator_output=span_creator_output,
-            # span_classifier_output=span_classifier_output,
+            span_classifier_output=span_classifier_output,
             triplet_output=triplet_output,
             predictor_triplet_output=predictor_triplet_output,
             final_triplet=final_triplet
@@ -300,6 +302,7 @@ class SentimentPredictorTripletModel(BaseTripletModel):
         if self.current_epoch < self.config['model']['freeze-triplets']:
             self.emb_layer.unfreeze()
             self.span_creator.unfreeze()
+            self.span_classifier.unfreeze()
             self.aggregator.unfreeze()
             self.sentiment_predictor.freeze()
             self.triplets_extractor.freeze()
@@ -307,6 +310,7 @@ class SentimentPredictorTripletModel(BaseTripletModel):
         elif self.current_epoch < self.config['model']['freeze-creators']:
             self.emb_layer.freeze()
             self.span_creator.freeze()
+            self.span_classifier.freeze()
             self.aggregator.freeze()
             self.sentiment_predictor.unfreeze()
             self.triplets_extractor.unfreeze()
@@ -314,6 +318,7 @@ class SentimentPredictorTripletModel(BaseTripletModel):
         else:
             self.emb_layer.unfreeze()
             self.span_creator.unfreeze()
+            self.span_classifier.unfreeze()
             self.aggregator.unfreeze()
             self.sentiment_predictor.unfreeze()
             self.triplets_extractor.unfreeze()
@@ -322,7 +327,7 @@ class SentimentPredictorTripletModel(BaseTripletModel):
         return [
             {'params': self.emb_layer.parameters(), 'lr': self.config['model']['transformer']['lr']},
             {'params': self.span_creator.parameters(), 'lr': self.config['model']['span-creator']['lr']},
-            # {'params': self.span_classifier.parameters(), 'lr': self.config['model']['span-classifier']['lr']},
+            {'params': self.span_classifier.parameters(), 'lr': self.config['model']['span-classifier']['lr']},
             {'params': self.aggregator.get_parameters(), 'lr': self.config['model']['aggregator']['lr']},
             {'params': self.sentiment_predictor.parameters(), 'lr': self.config['model']['sentiment-predictor']['lr']},
             {'params': self.triplets_extractor.parameters(), 'lr': self.config['model']['triplet-extractor']['lr']},

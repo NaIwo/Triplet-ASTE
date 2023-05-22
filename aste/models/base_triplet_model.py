@@ -105,7 +105,7 @@ class BaseTripletModel(BaseModel):
             range_ = torch.arange(0., 1., 0.05, dtype=torch.float)
 
         for threshold in range_:
-            self.triplets_extractor.config['model']['triplet-extractor']['threshold'] = threshold
+            self.triplets_extractor.config['model']['triplet-extractor']['threshold'] = threshold.item()
             self.reset_metrics()
             for batch in dataset:
                 batch.to_device(self.device)

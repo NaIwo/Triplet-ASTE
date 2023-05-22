@@ -77,6 +77,8 @@ class SpanCreatorModel(BaseModel):
 
             if self.config['model']['span-creator']['all-opinion-spans-window'] > 0:
                 opinions = self.get_all_spans_with_max_window(sample, 'OPINION')
+            if self.config['model']['span-creator']['all-aspect-spans-window'] > 0:
+                aspects = self.get_all_spans_with_max_window(sample, 'ASPECT')
 
             aspect_results.append(
                 SpanInformationOutput.from_span_manager(aspects, sample.sentence_obj[0]).to_device(data.device)

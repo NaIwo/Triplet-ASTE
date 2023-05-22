@@ -129,13 +129,15 @@ class SpanCreatorOutput(BaseModelOutput):
                  aspects: List[SpanInformationOutput],
                  opinions: List[SpanInformationOutput],
                  aspects_agg_emb: Optional[Tensor] = None,
-                 opinions_agg_emb: Optional[Tensor] = None
+                 opinions_agg_emb: Optional[Tensor] = None,
+                 sentence_emb: Optional[Tensor] = None
                  ):
         super().__init__(batch=batch, features=features)
         self.aspects: List[SpanInformationOutput] = aspects
         self.opinions: List[SpanInformationOutput] = opinions
         self.aspects_agg_emb: Optional[Tensor] = aspects_agg_emb
         self.opinions_agg_emb: Optional[Tensor] = opinions_agg_emb
+        self.sentence_emb: Optional[Tensor] = sentence_emb
 
     def __iter__(self):
         self.num: int = -1
@@ -150,6 +152,7 @@ class SpanCreatorOutput(BaseModelOutput):
             features=self.features[self.num] if self.features is not None else None,
             aspects_agg_emb=self.aspects_agg_emb[self.num] if self.aspects_agg_emb is not None else None,
             opinions_agg_emb=self.opinions_agg_emb[self.num] if self.opinions_agg_emb is not None else None,
+            sentence_emb=self.sentence_emb[self.num] if self.sentence_emb is not None else None,
             aspects=[self.aspects[self.num]],
             opinions=[self.opinions[self.num]]
         )
@@ -162,6 +165,7 @@ class SpanCreatorOutput(BaseModelOutput):
             opinions=self.opinions[:],
             aspects_agg_emb=self.aspects_agg_emb.clone() if self.aspects_agg_emb is not None else None,
             opinions_agg_emb=self.opinions_agg_emb.clone() if self.aspects_agg_emb is not None else None,
+            sentence_emb=self.sentence_emb.clone() if self.sentence_emb is not None else None,
         )
 
     def get_number_of_predicted_spans(self, with_repeated: bool = True) -> int:
@@ -273,6 +277,9 @@ class SampleTripletOutput(BaseModelOutput):
             sentence: Sentence,
             pred_sentiments: Optional[Tensor] = None,
             true_sentiments: Optional[Tensor] = None,
+            aspect_emb: Optional[Tensor] = None,
+            opinion_emb: Optional[Tensor] = None,
+            sentence_emb: Optional[Tensor] = None,
             similarities: Optional[Tensor] = None,
             span_creation_info: Optional[Tensor] = None,
             features: Optional[Tensor] = None,
@@ -282,6 +289,9 @@ class SampleTripletOutput(BaseModelOutput):
         self.sentence: Sentence = sentence
         self.triplets: List[Triplet] = list()
 
+        self.sentence_emb: Optional[Tensor] = sentence_emb
+        self.aspect_emb: Optional[Tensor] = aspect_emb
+        self.opinion_emb: Optional[Tensor] = opinion_emb
         self.aspect_ranges = aspect_ranges
         self.opinion_ranges = opinion_ranges
 
@@ -304,7 +314,7 @@ class SampleTripletOutput(BaseModelOutput):
 
         self.construct_triplets()
 
-    def construct_triplets(self):
+    def construct_triplets(self, remove_intersected: bool = False):
         highest_similarity = {}
         self.triplets: List[Triplet] = list()
         triplet_idx = 0
@@ -329,6 +339,15 @@ class SampleTripletOutput(BaseModelOutput):
                 self.triplets.append(triplet)
                 highest_similarity[key] = {'score': self.similarities[idx], 'idx': triplet_idx}
                 triplet_idx += 1
+            if not remove_intersected:
+                continue
+            for (t, t_key) in zip(self.triplets, highest_similarity.keys()):
+                t_intersect = triplet.intersect(t)
+                if t_intersect.aspect_span.start_idx == -1 or t_intersect.opinion_span.start_idx == -1:
+                    continue
+                if self.similarities[idx] > highest_similarity[t_key]['score']:
+                    self.triplets[highest_similarity[t_key]['idx']] = triplet
+                    highest_similarity[t_key] = {'score': self.similarities[idx], 'idx': highest_similarity[t_key]['idx']}
 
     def __repr__(self):
         return ' || '.join([str(t) for t in self.triplets])
@@ -340,6 +359,9 @@ class SampleTripletOutput(BaseModelOutput):
             sentence=self.sentence,
             pred_sentiments=self.pred_sentiments.clone() if self.pred_sentiments is not None else None,
             true_sentiments=self.true_sentiments.clone() if self.true_sentiments is not None else None,
+            sentence_emb=self.sentence_emb.clone() if self.sentence_emb is not None else None,
+            aspect_emb=self.aspect_emb.clone() if self.aspect_emb is not None else None,
+            opinion_emb=self.opinion_emb.clone() if self.opinion_emb is not None else None,
             similarities=self.similarities.clone() if self.similarities is not None else None,
             span_creation_info=self.span_creation_info.clone() if self.span_creation_info is not None else None,
             features=self.features.clone() if self.features is not None else None,
@@ -352,6 +374,8 @@ class TripletModelOutput(BaseModelOutput):
             self,
             batch: Batch,
             triplets: List[SampleTripletOutput],
+            aspect_features: Tensor,
+            opinion_features: Tensor,
             similarities: Tensor,
             normalized_similarities: Tensor,
             true_predicted_mask: Tensor,
@@ -361,6 +385,8 @@ class TripletModelOutput(BaseModelOutput):
     ):
         super().__init__(batch=batch)
         self.triplets: List[SampleTripletOutput] = triplets
+        self.aspect_features: Tensor = aspect_features
+        self.opinion_features: Tensor = opinion_features
         self.similarities: Tensor = similarities
         self.normalized_similarities: Tensor = normalized_similarities
 
@@ -394,6 +420,8 @@ class TripletModelOutput(BaseModelOutput):
         return TripletModelOutput(
             batch=self.batch,
             triplets=self.copy_triplets(),
+            aspect_features=self.aspect_features.clone(),
+            opinion_features=self.opinion_features.clone(),
             similarities=self.similarities.clone(),
             normalized_similarities=self.normalized_similarities.clone(),
             true_predicted_mask=self.true_predicted_mask.clone(),

@@ -57,5 +57,5 @@ class Triplet:
         return Triplet(
             aspect_span=self.aspect_span.intersect(other.aspect_span),
             opinion_span=self.opinion_span.intersect(other.opinion_span),
-            sentiment=None if self.sentiment != other.sentiment else self.sentiment
+            sentiment='NOT_PAIR' if self.sentiment != other.sentiment else self.sentiment
         )

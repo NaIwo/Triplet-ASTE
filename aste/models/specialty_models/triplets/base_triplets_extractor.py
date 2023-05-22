@@ -3,6 +3,7 @@ from typing import Dict, List, Tuple
 import torch
 from torch import Tensor
 from torchmetrics import MetricCollection
+import torch.nn.functional as F
 
 from ...base_model import BaseModel
 from ...outputs import (
@@ -18,6 +19,7 @@ from ...utils.triplet_utils import (
     create_mask_matrix_for_prediction,
     get_true_predicted_mask,
     create_embedding_mask_matrix,
+    expand_aspect_and_opinion
 )
 from ....models.outputs import (
     ModelLoss,
@@ -37,12 +39,12 @@ class BaseTripletExtractorModel(BaseModel):
     def forward(self, data_input: SpanCreatorOutput) -> TripletModelOutput:
         data_input = data_input.copy()
         aspects, opinions = self._forward_embeddings(data_input)
-        data_input.aspects_agg_emb = aspects
-        data_input.opinions_agg_emb = opinions
+        # data_input.aspects_agg_emb = aspects
+        # data_input.opinions_agg_emb = opinions
         pad_mask: Tensor = create_embedding_mask_matrix(data_input)
 
-        norm_sim: Tensor = self.normalized_similarity(aspects, opinions) * pad_mask
-        sim: Tensor = self.similarity(aspects, opinions) * pad_mask
+        norm_sim = self.normalized_similarity(aspects, opinions) * pad_mask
+        sim = self.similarity(aspects, opinions) * pad_mask
 
         loss_mask: Tensor = create_mask_matrix_for_loss(data_input)
         prediction_mask: Tensor = create_mask_matrix_for_prediction(data_input)
@@ -54,6 +56,8 @@ class BaseTripletExtractorModel(BaseModel):
         return TripletModelOutput(
             batch=data_input.batch,
             triplets=triplets,
+            aspect_features=aspects,
+            opinion_features=opinions,
             similarities=sim,
             normalized_similarities=norm_sim,
             loss_mask=loss_mask,
@@ -61,10 +65,6 @@ class BaseTripletExtractorModel(BaseModel):
             prediction_mask=prediction_mask,
             pad_mask=pad_mask
         )
-
-    @property
-    def output_dim(self):
-        return self.input_dim * 2
 
     def _forward_embeddings(self, data_input: SpanCreatorOutput) -> Tuple[Tensor, Tensor]:
         aspects = self.aspect_net(data_input.aspects_agg_emb)
@@ -81,21 +81,24 @@ class BaseTripletExtractorModel(BaseModel):
         raise NotImplementedError
 
     def get_loss(self, model_out: TripletModelOutput) -> ModelLoss:
-        denominator = 0
+        loss_fn = self._get_contrastive_loss
+
+        count = 0
         loss = torch.tensor(0.0).to(self.device)
 
         if self.config['model']['triplet-extractor']['aspect-to-opinion']:
-            denominator += 1
-            loss += self._get_loss(model_out, dim=TripletDimensions.OPINION)
+            count += 1
+            loss += loss_fn(model_out, dim=TripletDimensions.OPINION)
 
         if self.config['model']['triplet-extractor']['opinion-to-aspect']:
-            denominator += 1
-            loss += self._get_loss(model_out, dim=TripletDimensions.ASPECT)
+            count += 1
+            loss += loss_fn(model_out, dim=TripletDimensions.ASPECT)
 
-        if denominator == 0:
+        if count == 0:
             return ModelLoss(config=self.config, losses={})
 
-        loss = loss / denominator
+        loss = loss / count
+
         full_loss = ModelLoss(
             config=self.config,
             losses={
@@ -106,7 +109,46 @@ class BaseTripletExtractorModel(BaseModel):
 
         return full_loss
 
-    def _get_loss(self, model_out: TripletModelOutput, dim: int) -> Tensor:
+    def _get_kl_loss(self, model_out: TripletModelOutput, dim: int) -> Tensor:
+        if dim == TripletDimensions.OPINION:
+            phrase1, phrase2 = expand_aspect_and_opinion(model_out.aspect_features, model_out.opinion_features)
+            kl_div = self.get_kl(phrase1, phrase2)
+        else:
+            phrase1, phrase2 = expand_aspect_and_opinion(model_out.opinion_features, model_out.aspect_features)
+            kl_div = self.get_kl(phrase1, phrase2)
+            kl_div = torch.transpose(kl_div, 1, 2)
+
+        dim = -1
+
+        mask = model_out.loss_mask & model_out.pad_mask
+        reverse_loss_mask = (~model_out.loss_mask) * model_out.pad_mask
+
+        pos_loss = kl_div * mask.float()
+        pos_loss = pos_loss.sum(dim=dim) / (mask.sum(dim=dim).float() + 1e-8)  # min
+
+        neg_loss = kl_div * reverse_loss_mask.float()
+        k = self.config['model']['triplet-extractor']['num-negatives']
+        k = min(k, neg_loss.shape[dim])
+        neg_loss = -torch.topk(-neg_loss, k=k, dim=dim, sorted=False).values
+        neg_loss = neg_loss.sum(dim=dim) / (reverse_loss_mask.sum(dim=dim).float() + 1e-8)  # max
+
+        loss = pos_loss + (1. / (neg_loss + 1e-10))
+        loss = loss.sum(dim=-1)
+        loss = 1. + loss
+        loss = torch.log(loss)
+        loss = torch.sum(loss) / self.config['general-training']['batch-size']
+
+        return loss
+
+    @staticmethod
+    def get_kl(phrase1, phrase2):
+        logits = F.log_softmax(phrase1, dim=-1)
+        targets = F.softmax(phrase2, dim=-1)
+        kl_div = F.kl_div(logits, targets, reduction='none').sum(dim=-1)
+        kl_div = torch.clamp(kl_div, 1e-10, 5.)
+        return kl_div
+
+    def _get_contrastive_loss(self, model_out: TripletModelOutput, dim: int) -> Tensor:
         mask = model_out.loss_mask
         phrase_mask = torch.isin(mask.int(), 1).any(dim=dim, keepdim=True)
         sample_mask = random_row_mask(model_out.pad_mask, dim, self.device)
@@ -117,7 +159,12 @@ class BaseTripletExtractorModel(BaseModel):
 
         sim: Tensor = model_out.similarities
         sim = torch.exp(sim / self.config['model']['triplet-extractor']['temperature'])
-        weight = self.config['model']['triplet-extractor']['negative-weight']
+        weight = torch.exp(
+            torch.tensor(
+                self.config['model']['triplet-extractor']['negative-weight'] /
+                self.config['model']['triplet-extractor']['temperature']
+            ).to(self.device)
+        )
         sim_numerator = torch.where(phrase_mask, sim, torch.full_like(sim, weight).to(self.device))
 
         numerator: Tensor = sim_numerator * mask
@@ -154,13 +201,27 @@ class BaseTripletExtractorModel(BaseModel):
         self.final_metrics.update(tp=tp, tp_fp=tp_fp, tp_fn=tp_fn)
 
     def threshold_data(self, data: Tensor) -> Tensor:
+        return self._threshold_contrastive(data)
+
+    def _threshold_kl(self, data: Tensor) -> Tensor:
+        thr = self.config['model']['triplet-extractor']['threshold']
+        if isinstance(thr, float):
+            return data < thr
+        else:
+            mask = data > 0.0
+            thr = min(thr, data.shape[-1])
+            indices = torch.topk(-data, thr, dim=-1).indices
+            mask = torch.zeros_like(data).scatter_(-1, indices, 1) * mask
+            return mask * data > 0.0
+
+    def _threshold_contrastive(self, data: Tensor) -> Tensor:
         thr = self.config['model']['triplet-extractor']['threshold']
         if isinstance(thr, float):
             return data > thr
         else:
             mask = data > 0.0
             thr = min(thr, data.shape[-1])
-            indices = torch.topk(data, thr, dim=-1).indices
+            indices = torch.topk(data, int(thr), dim=-1).indices
             mask = torch.zeros_like(data).scatter_(-1, indices, 1) * mask
             return mask * data > 0.0
 

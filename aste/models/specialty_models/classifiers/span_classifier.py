@@ -11,6 +11,7 @@ from ...outputs import (
 )
 from ...utils.const import CreatedSpanCodes
 from ....losses.dice_loss import DiceLoss
+from ....losses.focal_loss import FocalLoss
 from ....models.outputs import (
     ModelLoss,
     ModelMetric

@@ -29,7 +29,7 @@ def create_random_tensor_with_one_true_per_row(mask: Tensor, dim: int, device: t
     if dim == TripletDimensions.ASPECT:
         mask = mask.permute(0, 2, 1)
     m1 = mask / (mask.sum(dim=TripletDimensions.OPINION, keepdims=True) + 1e-8)
-    m2 = torch.where(m1.sum(TripletDimensions.OPINION, keepdims=True) == 0, torch.ones_like(m1), m1)
+    m2 = torch.where(mask.sum(TripletDimensions.OPINION, keepdims=True) == 0, torch.ones_like(m1) / m1.shape[TripletDimensions.OPINION], m1)
     m3 = torch.distributions.Categorical(m2).sample()[..., None].to(device)
     f = torch.zeros_like(mask).scatter_(TripletDimensions.OPINION, m3, 1).to(device)
     if dim == TripletDimensions.ASPECT:

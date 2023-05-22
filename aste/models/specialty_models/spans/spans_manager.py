@@ -57,7 +57,7 @@ class SpanInformationManager:
             index: int = self.span_ranges.index(span_range)
             if self.span_creation_info[index] == CreatedSpanCodes.ADDED_TRUE:
                 self.span_creation_info[index] = CreatedSpanCodes.PREDICTED_TRUE
-        elif end_idx >= b_idx:
+        elif (end_idx >= b_idx) and b_idx >= 0:
             self.span_ranges += [span_range]
             self.span_creation_info += [CreatedSpanCodes.PREDICTED_FALSE]
             self.sentiments += [ASTELabels.NOT_PAIR]
