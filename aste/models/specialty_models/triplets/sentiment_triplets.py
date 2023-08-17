@@ -40,15 +40,21 @@ class BaseSentimentTripletExtractorModel(BaseTripletExtractorModel):
     def get_triplets_from_matrix(self, matrix: Tensor, data_input: SpanCreatorOutput) -> List[SampleTripletOutput]:
         triplets: List = list()
 
+        sample_idx: int
         sample: Tensor
         sample_aspects: SpanInformationOutput
         sample_opinions: SpanInformationOutput
         zip_ = zip(matrix, data_input.aspects, data_input.opinions)
         for sample_idx, (sample, sample_aspects, sample_opinions) in enumerate(zip_):
             significant: Tensor = self.threshold_data(sample).nonzero()
+
             a_ranges: Tensor = sample_aspects.span_range[significant[:, 0]]
             o_ranges: Tensor = sample_opinions.span_range[significant[:, 1]]
+            a_emb: Tensor = data_input.aspects_agg_emb[sample_idx:sample_idx + 1, significant[:, 0]]
+            o_emb: Tensor = data_input.opinions_agg_emb[sample_idx:sample_idx + 1, significant[:, 1]]
+
             span_creation_info = sample_opinions.span_creation_info[significant[:, 1]]
+
             sentiments: Tensor = sample_opinions.sentiments[significant[:, 1]]
 
             features: Tensor = create_embeddings_matrix_by_concat_tensors(
@@ -57,10 +63,14 @@ class BaseSentimentTripletExtractorModel(BaseTripletExtractorModel):
             )
             features = features[:, significant[:, 0], significant[:, 1]]
             similarities = matrix[sample_idx: sample_idx + 1, significant[:, 0], significant[:, 1]]
+
             triplets.append(
                 SampleTripletOutput(
                     aspect_ranges=a_ranges,
                     opinion_ranges=o_ranges,
+                    sentence_emb=data_input.sentence_emb[sample_idx],
+                    aspect_emb=a_emb.squeeze(dim=0),
+                    opinion_emb=o_emb.squeeze(dim=0),
                     pred_sentiments=sentiments,
                     sentence=sample_opinions.sentence,
                     similarities=similarities.squeeze(dim=0),

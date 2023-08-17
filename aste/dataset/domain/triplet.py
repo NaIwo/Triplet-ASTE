@@ -35,7 +35,7 @@ class Triplet:
         return self.__str__()
 
     def __eq__(self, other) -> bool:
-        return (self.aspect_span == other.aspect_span) and (self.opinion_span == self.opinion_span) and (
+        return (self.aspect_span == other.aspect_span) and (self.opinion_span == other.opinion_span) and (
                 self.sentiment == other.sentiment)
 
     def __lt__(self, other):

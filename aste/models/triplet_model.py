@@ -156,13 +156,13 @@ class OpinionBasedTripletModelClassifier(BaseTripletModel):
         super(OpinionBasedTripletModelClassifier, self).__init__(model_name, config=config)
 
         self.span_creator: BaseModel = SpanCreatorModel(input_dim=self.emb_layer.embedding_dim, config=config)
-        self.aggregator: BaseAggregator = EndPointAggregator(input_dim=self.emb_layer.embedding_dim, config=config)
+        self.aggregator: BaseAggregator = MaxPoolAggregator(input_dim=self.emb_layer.embedding_dim, config=config)
         self.sentiment_extender: BaseModel = EmbeddingsExtenderModel(input_dim=self.aggregator.output_dim,
                                                                      config=config)
         self.span_classifier: BaseModel = SpanClassifierModel(input_dim=self.aggregator.output_dim, config=config)
-        self.pair_classifier: BaseModel = PairClassifierModel(input_dim=self.aggregator.output_dim * 2, config=config)
+        self.pair_classifier: BaseModel = PairClassifierModel(input_dim=self.sentiment_extender.output_dim, config=config)
         self.triplets_extractor: BaseModel = MetricTripletExtractorModel(
-            config=config, input_dim=self.aggregator.output_dim
+            config=config, input_dim=self.sentiment_extender.output_dim
         )
 
         self.final_metrics = FinalMetric()
@@ -194,10 +194,12 @@ class OpinionBasedTripletModelClassifier(BaseTripletModel):
             emb_output.features,
             span_creator_output.get_opinion_span_predictions()
         )
-        extended_opinions: SentimentModelOutput = self.sentiment_extender(span_creator_output.opinions_agg_emb)
-        span_creator_output = span_creator_output.extend_opinions_with_sentiments(extended_opinions)
+        span_creator_output.sentence_emb = emb_output.features.clone()
 
         span_classifier_output: ClassificationModelOutput = self.span_classifier(span_creator_output)
+
+        extended_opinions: SentimentModelOutput = self.sentiment_extender(span_creator_output.opinions_agg_emb)
+        span_creator_output = span_creator_output.extend_opinions_with_sentiments(extended_opinions)
 
         triplet_output: TripletModelOutput = self.triplets_extractor(span_creator_output)
 
@@ -263,7 +265,6 @@ class SentimentPredictorTripletModel(BaseTripletModel):
         }
 
     def forward(self, batch: Batch) -> ModelOutput:
-        self.freeze_with_schedule()
         batch.to_device(self.device)
         emb_output: BaseModelOutput = self.emb_layer(batch)
         span_creator_output: SpanCreatorOutput = self.span_creator(emb_output)
@@ -297,31 +298,6 @@ class SentimentPredictorTripletModel(BaseTripletModel):
             predictor_triplet_output=predictor_triplet_output,
             final_triplet=final_triplet
         )
-
-    def freeze_with_schedule(self):
-        if self.current_epoch < self.config['model']['freeze-triplets']:
-            self.emb_layer.unfreeze()
-            self.span_creator.unfreeze()
-            self.span_classifier.unfreeze()
-            self.aggregator.unfreeze()
-            self.sentiment_predictor.freeze()
-            self.triplets_extractor.freeze()
-
-        elif self.current_epoch < self.config['model']['freeze-creators']:
-            self.emb_layer.freeze()
-            self.span_creator.freeze()
-            self.span_classifier.freeze()
-            self.aggregator.freeze()
-            self.sentiment_predictor.unfreeze()
-            self.triplets_extractor.unfreeze()
-
-        else:
-            self.emb_layer.unfreeze()
-            self.span_creator.unfreeze()
-            self.span_classifier.unfreeze()
-            self.aggregator.unfreeze()
-            self.sentiment_predictor.unfreeze()
-            self.triplets_extractor.unfreeze()
 
     def get_params_and_lr(self) -> List[Dict]:
         return [

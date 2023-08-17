@@ -1,11 +1,12 @@
-from ..domain.const import ASTELabels
-from ..domain import Sentence, Triplet, Span
-from .counter import StatsCounter
+from functools import lru_cache
+from itertools import chain, permutations, product
+from typing import Set, List, Callable, Optional, Tuple, Union
 
 import numpy as np
-from functools import lru_cache
-from typing import Set, List, Callable, Optional, Tuple
-from itertools import chain, permutations, product
+
+from .counter import StatsCounter
+from ..domain import Sentence, Triplet, Span
+from ..domain.const import ASTELabels
 
 
 # ============ Dataset statistics ============ #
@@ -73,7 +74,7 @@ def specific_span_word_length_count(sentence: Sentence, span_source: str, func: 
 
 
 def triplet_word_length_count(sentence: Sentence, aspect_func: Callable, opinion_func: Callable,
-                              op: str = 'and') -> StatsCounter:
+                              operation: str = 'and') -> StatsCounter:
     aspect_spans: List = _get_words_from_span(sentence, 'aspect_span')
     opinion_spans: List = _get_words_from_span(sentence, 'opinion_span')
     aspect_counts: List = list(map(lambda el: aspect_func(el.split()), aspect_spans))
@@ -81,9 +82,9 @@ def triplet_word_length_count(sentence: Sentence, aspect_func: Callable, opinion
     all_counts: np.ndarray = np.array([aspect_counts, opinion_counts])
     if not all_counts.any():
         return StatsCounter(numerator=0)
-    if op == 'and':
+    if operation == 'and':
         return StatsCounter(numerator=np.where(all_counts[0] & all_counts[1])[0].shape[0])
-    elif op == 'or':
+    elif operation == 'or':
         return StatsCounter(numerator=np.where(all_counts[0] | all_counts[1])[0].shape[0])
 
 
@@ -142,6 +143,80 @@ def opposite_sentiment_count(true_sentence: Sentence, pred_sentence: Sentence) -
                 pred_sentiment: ASTELabels = ASTELabels[pred.sentiment]
                 sc.numerator += (true_sentiment == ASTELabels.POS and pred_sentiment == ASTELabels.NEG) or (
                         true_sentiment == ASTELabels.NEG and pred_sentiment == ASTELabels.POS)
+
+    return sc
+
+
+def correct_triplets_length_count(true_sentence: Sentence, pred_sentence: Sentence, k: int,
+                                  span_sources: Union[str, Tuple[str, str]], operation: str = '==') -> StatsCounter:
+    if isinstance(span_sources, str):
+        span_sources = (span_sources,)
+    assert all([src.lower() in ('opinion_span', 'aspect_span') for src in
+                span_sources]), f'Wrong source of span: {span_sources}.'
+
+    op = _get_operation(operation)
+
+    # Get the triplets with the specified length
+    true_triplets_with_k_length = [triplet for triplet in true_sentence.triplets if
+                                   all([op(len(getattr(triplet, src).span_words), k) for src in span_sources])]
+
+    sc = _compute_metrics(true_triplets_with_k_length, pred_sentence.triplets)
+    return sc
+
+
+def triplets_length_based_metrics(
+        true_sentence: Sentence,
+        pred_sentence: Sentence,
+        k: int,
+        operation: str = '=='
+) -> StatsCounter:
+    op = _get_operation(operation)
+
+    if op(len(true_sentence.triplets), k):
+        sc = _compute_metrics(true_sentence.triplets, pred_sentence.triplets)
+        return sc
+    else:
+        return StatsCounter()
+
+
+def _get_operation(operation: str) -> Callable:
+    op_map = {
+        "==": lambda x, y: x == y,
+        "<=": lambda x, y: x <= y,
+        ">=": lambda x, y: x >= y
+    }
+    assert operation in op_map, f"Invalid operation: {operation}. Allowed operations: {', '.join(op_map.keys())}."
+    op = op_map[operation]
+    return op
+
+
+def metrics_for_sentences_with_multiple_sentiments(true_sentence: Sentence,
+                                                          pred_sentence: Sentence) -> StatsCounter:
+    if len(set([triplet.sentiment for triplet in true_sentence.triplets])) > 1:
+        sc = _compute_metrics(true_sentence.triplets, pred_sentence.triplets)
+        return sc
+    else:
+        return StatsCounter()
+
+
+def _compute_metrics(true_triplets: List[Triplet], pred_triplets: List[Triplet]) -> StatsCounter:
+    sc = StatsCounter()
+
+    tp, fp, fn = 0, 0, 0
+    for true_triplet in true_triplets:
+        if true_triplet in pred_triplets:
+            tp += 1
+        else:
+            fn += 1
+
+    for pred_triplet in pred_triplets:
+        if pred_triplet not in true_triplets:
+            fp += 1
+
+    sc.update_tp_fp_fn(tp, fp, fn)
+
+    sc.numerator = tp
+    sc.denominator = len(true_triplets)
 
     return sc
 

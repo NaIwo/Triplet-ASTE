@@ -2,18 +2,22 @@ from aste.dataset.statistics import ResultInvestigator
 from aste.dataset.reader import ASTEDataset
 
 from os import getcwd, path, listdir
-from os.path import join
+from os.path import join, basename, splitext
 
 if __name__ == '__main__':
     # You can perform investigation about your results by using ResultInvestigator class.
-    for dataset in ['ca', 'eu']:
-        main_path: str = path.join('experiments', 'experiment_results', 'all', dataset)
-        label_path: str = join('dataset', 'data', 'multib', dataset, 'test.txt')
+    for dataset in ['14lap']:
+        main_path: str = path.join('experiments', 'experiments_results_newest', dataset, 'transformer', 'amazon')
+        label_path: str = join('dataset', 'data', 'ASTE_data_v2', dataset, 'test.txt')
         for variation in listdir(main_path):
-            if '.' in variation:
+            if 'pred' not in variation:
                 continue
-            pred_path: str = join(main_path, variation, f'model_output_0.txt')
-            save_path: str = join(main_path, variation)
+
+            pred_path: str = join(main_path, variation)
+
+            base: str = basename(pred_path)
+            file_name, extension = splitext(base)
+            save_path: str = join(main_path, f'{file_name}_stats')
 
             # One thing is required to do. Build ASTEDataset from original data and predicted one
             original_data = ASTEDataset(label_path)

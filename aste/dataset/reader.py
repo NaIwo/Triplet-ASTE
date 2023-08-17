@@ -36,7 +36,8 @@ class ASTEDataset(Dataset):
             line: str
             for line in tqdm(file.readlines(), desc=f'Loading data from path: {data_path}'):
                 sentence = Sentence(line, encoder, include_sub_words_info_in_mask)
-                self.sentences.append(sentence)
+                if (('amazon' in data_path) and (sentence.encoded_sentence_length < 80)) or ('amazon' not in data_path):
+                    self.sentences.append(sentence)
 
     def __len__(self) -> int:
         return len(self.sentences)

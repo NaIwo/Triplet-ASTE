@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Callable, Tuple, DefaultDict, Union, Ty
 
 import pandas as pd
 from tqdm import tqdm
+from copy import deepcopy
 
 from .domain import Sentence
 from .reader import ASTEDataset
@@ -211,11 +212,22 @@ class ResultInvestigator:
         self.model_prediction.sort()
         self.original_data.sort()
 
+        prediction = self.model_prediction[:]
+
         true: Sentence
         pred: Sentence
-        for true, pred in tqdm(zip(self.original_data, self.model_prediction), desc=f'Result investigation...'):
-            self.process_sentence(true, pred)
-            self.process_sentence_advanced(true, pred)
+        for true in tqdm(self.original_data, desc=f'Result investigation...'):
+            for pred in prediction:
+                if true.sentence == pred.sentence:
+                    self.process_sentence(true, pred)
+                    self.process_sentence_advanced(true, pred)
+                    prediction.remove(pred)
+                    break
+            else:
+                pred = deepcopy(true)
+                pred.triplets = []
+                self.process_sentence(true, pred)
+                self.process_sentence_advanced(true, pred)
 
         statistic_name: str
         results: List
@@ -237,7 +249,10 @@ class ResultInvestigator:
     def pprint(self) -> None:
         self.assert_compute()
         self.compared_results.pprint()
-        print(json.dumps(self.result_stats, indent=2, default=str))
+        result_stats_to_print = {
+            key: {label: getattr(value, label)() for label in ['number', 'count', 'precision', 'recall', 'f1']}
+            if isinstance(value, StatsCounter) else value for key, value in self.result_stats.items()}
+        print(json.dumps(result_stats_to_print, indent=2, default=str))
         print(json.dumps(self.advanced_result_stats, indent=2, default=str))
 
     def to_csv(self, dir_path: str) -> None:
@@ -252,17 +267,21 @@ class ResultInvestigator:
         self.assert_compute()
         self.compared_results.to_json(dir_path)
         os.makedirs(dir_path, exist_ok=True)
+        result_stats_to_save = {
+            key: {label: getattr(value, label)() for label in ['number', 'count', 'precision', 'recall', 'f1']}
+            if isinstance(value, StatsCounter) else value for key, value in self.result_stats.items()}
         with open(os.path.join(dir_path, 'investigation_results.json'), mode='w') as f:
-            json.dump(self.result_stats, f, indent=2, default=str)
+            json.dump(result_stats_to_save, f, indent=2, default=str)
         with open(os.path.join(dir_path, 'investigation_advanced_results.json'), mode='w') as f:
             json.dump(self.advanced_result_stats, f, indent=2, default=str)
 
     def to_pandas(self):
         key: str
         value: Union[StatsCounter, List]
-        tmp_stats: Dict = {key: value.number() if isinstance(value, StatsCounter) else value for key, value in
-                           self.result_stats.items()}
-        return self.compared_results.to_pandas(), pd.DataFrame(tmp_stats, index=[0]), results_as_pandas(
+        results_dataframe = pd.DataFrame.from_dict({
+            key: {label: getattr(value, label)() for label in ['number', 'count', 'precision', 'recall', 'f1']}
+            if isinstance(value, StatsCounter) else value for key, value in self.result_stats.items()}, orient='columns')
+        return self.compared_results.to_pandas(), results_dataframe, results_as_pandas(
             self.advanced_result_stats)
 
     def assert_compute(self) -> None:

@@ -21,13 +21,13 @@ class SentimentPredictor(BaseModel):
     def __init__(self, input_dim: int, config: Dict, model_name: str = 'Sentiment predictor model'):
         super(SentimentPredictor, self).__init__(model_name=model_name, config=config)
 
-        n_polarities = len(self.config['dataset']['polarities']) + 1
+        self.n_polarities = len(self.config['dataset']['polarities']) + 1
 
         metrics = get_selected_metrics(
             for_spans=False,
             dist_sync_on_step=True,
             task='multiclass',
-            num_classes=n_polarities
+            num_classes=self.n_polarities
         )
         self.final_metrics: MetricCollection = MetricCollection(metrics=metrics)
 
@@ -40,16 +40,16 @@ class SentimentPredictor(BaseModel):
         self.loss = FocalLoss(alpha=1., gamma=3.)
 
         input_dim = 3 * input_dim + 32
-        neurons: List = [
-            input_dim,
-            input_dim // 2,
-            input_dim // 4,
-            input_dim // 8,
-            n_polarities
-        ]
-        self.predictor = sequential_blocks(neurons, self.device, is_last=True)
+
+        self.predictor = TransformerModel(
+            input_dim=input_dim,
+            model_dim=input_dim // 4,
+            attention_heads=4,
+            num_layers=2,
+            output_dim=self.n_polarities,
+            device=self.device
+        ).to(self.device)
         self.distance = sequential_blocks([1, 16, 32], self.device, is_last=False)
-        # self.predictor.append(torch.nn.Softmax(dim=-1))
 
     def forward(self, data: TripletModelOutput) -> TripletModelOutput:
         out = data.copy()
@@ -64,7 +64,12 @@ class SentimentPredictor(BaseModel):
                 torch.abs(triplet.opinion_ranges[:, 0:1] - triplet.aspect_ranges[:, 0:1]).float()
             )
             features = torch.cat([features, cls, distance], dim=1)
-            scores = self.predictor(features)
+            if features.shape[0] != 0:
+                features = features.unsqueeze(0)
+                scores = self.predictor(features)
+                scores = scores.squeeze(0)
+            else:
+                scores = torch.zeros(0, self.n_polarities).to(self.device)
             triplet.features = scores
             sentiments = torch.argmax(scores, dim=-1, keepdim=True)
             triplet.pred_sentiments = sentiments

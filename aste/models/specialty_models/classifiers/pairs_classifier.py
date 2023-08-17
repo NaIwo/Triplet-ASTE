@@ -2,13 +2,14 @@ from typing import Dict, List
 
 import torch
 
-from ..utils import sequential_blocks
+from ..utils import sequential_blocks, TransformerModel
 from ...base_model import BaseModel
 from ...outputs import (
     TripletModelOutput
 )
 from ...utils.const import CreatedSpanCodes
 from ....losses.dice_loss import DiceLoss
+from ....losses.focal_loss import FocalLoss
 from ....models.outputs import (
     ModelLoss,
     ModelMetric
@@ -31,26 +32,39 @@ class PairClassifierModel(BaseModel):
             metrics=metrics
         )
 
-        self.loss = torch.nn.BCELoss(reduction='mean')
+        self.loss = DiceLoss(alpha=0.7, with_logits=True)
 
-        neurons: List = [
-            input_dim,
-            input_dim // 2,
-            input_dim // 4,
-            input_dim // 8,
-            1
-        ]
-        self.predictor = sequential_blocks(neurons=neurons, is_last=True, device=self.device)
-        self.predictor.append(torch.nn.Sigmoid())
+        input_dim = 3 * input_dim + 32
+
+        self.predictor = TransformerModel(
+            input_dim=input_dim,
+            model_dim=input_dim // 4,
+            attention_heads=4,
+            num_layers=2,
+            output_dim=1,
+            device=self.device
+        ).to(self.device)
+        self.distance = sequential_blocks([1, 16, 32], self.device, is_last=False)
 
     def forward(self, triplets: TripletModelOutput) -> TripletModelOutput:
         out = triplets.copy()
 
         for triplet in out.triplets:
             features = triplet.features
-            if triplet.similarities.size() != torch.Size([0]):
-                features *= triplet.similarities.unsqueeze(-1).repeat(1, features.size(-1))
-            scores = self.predictor(features)
+            cls = triplet.sentence_emb[0].repeat(features.shape[0], 1)
+            # if triplet.similarities.size() != torch.Size([0]):
+            #     similarities = triplet.similarities.unsqueeze(-1).repeat(1, cls.size(-1))
+            #     cls *= similarities
+            distance = self.distance(
+                torch.abs(triplet.opinion_ranges[:, 0:1] - triplet.aspect_ranges[:, 0:1]).float()
+            )
+            features = torch.cat([features, cls, distance], dim=1)
+            if features.shape[0] != 0:
+                features = features.unsqueeze(0)
+                scores = self.predictor(features)
+                scores = scores.squeeze(0)
+            else:
+                scores = torch.zeros(0, 1).to(self.device)
             triplet.features = scores
             sentiments = (scores <= 0.5).squeeze()
             triplet.pred_sentiments = torch.where(sentiments, ASTELabels.NOT_PAIR, triplet.pred_sentiments)
@@ -64,7 +78,7 @@ class PairClassifierModel(BaseModel):
         else:
             features = model_out.get_features()
             # features = torch.cat([1 - features, features], dim=-1)
-            loss = self.loss(features.view(-1), (model_out.get_span_creation_info() >= 0).view(-1).float())
+            loss = self.loss(features, (model_out.get_span_creation_info() >= 0).view(-1).float())
 
         full_loss = ModelLoss(
             config=self.config,

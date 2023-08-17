@@ -129,7 +129,10 @@ dmypy.json
 .pyre/
 
 /results/
-/experiments/experiment_results/
 /wandb/
 /lightning_logs/
 */amazon/
+/experiments/experiment_results/
+/experiments/experiment_results_dice_focal/
+experiments/experiment_results_focal_focal/
+experiments/experiments_results_newest/

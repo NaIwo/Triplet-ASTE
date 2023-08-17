@@ -224,6 +224,7 @@ class SpanCreatorOutput(BaseModelOutput):
             features=self.features,
             aspects_agg_emb=self.aspects_agg_emb,
             opinions_agg_emb=opinions_agg_emb,
+            sentence_emb=self.sentence_emb,
             opinions=opinions,
             aspects=self.aspects,
         )
@@ -339,15 +340,30 @@ class SampleTripletOutput(BaseModelOutput):
                 self.triplets.append(triplet)
                 highest_similarity[key] = {'score': self.similarities[idx], 'idx': triplet_idx}
                 triplet_idx += 1
-            if not remove_intersected:
-                continue
-            for (t, t_key) in zip(self.triplets, highest_similarity.keys()):
-                t_intersect = triplet.intersect(t)
-                if t_intersect.aspect_span.start_idx == -1 or t_intersect.opinion_span.start_idx == -1:
-                    continue
-                if self.similarities[idx] > highest_similarity[t_key]['score']:
-                    self.triplets[highest_similarity[t_key]['idx']] = triplet
-                    highest_similarity[t_key] = {'score': self.similarities[idx], 'idx': highest_similarity[t_key]['idx']}
+
+        if remove_intersected:
+            self.triplets = self.filter_triplets(self.triplets, highest_similarity=highest_similarity)
+
+    @staticmethod
+    def filter_triplets(triplets: List[Triplet], highest_similarity: Dict) -> List[Triplet]:
+        filtered_triplets = []
+        sorted_indices = sorted(highest_similarity, key=lambda key: highest_similarity[key]['score'], reverse=True)
+
+        for key in sorted_indices:
+            current_triplet = triplets[highest_similarity[key]['idx']]
+            is_intersected = False
+
+            for filtered_triplet in filtered_triplets:
+                t_intersect = current_triplet.intersect(filtered_triplet)
+
+                if t_intersect.aspect_span.start_idx != -1 and t_intersect.opinion_span.start_idx != -1:
+                    is_intersected = True
+                    break
+
+            if not is_intersected:
+                filtered_triplets.append(current_triplet)
+
+        return filtered_triplets
 
     def __repr__(self):
         return ' || '.join([str(t) for t in self.triplets])
@@ -480,3 +496,23 @@ class FinalTriplets(BaseModelOutput):
 
     def __repr__(self):
         return ' || '.join([str(t) for t in self.pred_triplets])
+
+    def to_string(self) -> str:
+        output = []
+
+        def indices_string(start_idx, end_idx):
+            return ', '.join(map(str, list(range(start_idx, end_idx + 1))))
+
+        for batch_idx, batch_triplets in enumerate(self.pred_triplets):
+            sentence = self.batch.sentence_obj[batch_idx].sentence
+
+            triplets_list = []
+            for triplet in batch_triplets:
+                aspect_indices = indices_string(triplet.aspect_span.start_idx, triplet.aspect_span.end_idx)
+                opinion_indices = indices_string(triplet.opinion_span.start_idx, triplet.opinion_span.end_idx)
+                sentiment = triplet.sentiment
+                triplets_list.append(f"([{aspect_indices}], [{opinion_indices}], '{sentiment}')")
+
+            triplets_str = ', '.join(triplets_list)
+            output.append(f"{sentence}{self.batch.sentence_obj[0].SEP}[{triplets_str}]")
+        return '\n'.join(output)
