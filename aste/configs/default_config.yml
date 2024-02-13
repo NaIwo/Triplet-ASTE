@@ -1,6 +1,6 @@
 general-training:
   device: cuda # {cpu vs gpu}
-  batch-size: 2
+  batch-size: 32
   precision: 32
   include-sub-words-info-in-mask: False
 dataset:
@@ -16,9 +16,9 @@ model:
     source: microsoft/deberta-base
   span-creator:
     lr: 0.0000003
-    extend-opinion-span-ranges:  [[0, 1], [0, -1]]
+    extend-opinion-span-ranges:  [[0, 1], [0, -1], [1, 0], [-1, 0]]
     extend-aspect-span-ranges: [[0, 1], [0, -1]]
-    all-opinion-spans-window: 6
+    all-opinion-spans-window: 4
     all-aspect-spans-window: -1
     max-number-of-spans: 10000
     loss-weight: 0.1
