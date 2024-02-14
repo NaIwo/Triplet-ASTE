@@ -4,7 +4,7 @@ setup(
     name='aste',
     version='1.0',
     description='Astpect Sentiment Triplet Extraction',
-    author='Iwo Naglik',
+    author='Anonymous',
     author_email='',
     packages=find_packages(),
     include_package_data=True,
